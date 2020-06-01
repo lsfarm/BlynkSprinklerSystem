@@ -9,10 +9,10 @@ V2X  - Auto Switch :: Time Input Channel
 V3X  - Actual Valve State
 V4X  - Channel Start Seconds
 V5X  - Channel Stop Seconds
-V90  - Notifications Enable/Disable
+V90  - Blynk App Notifications Enable/Disable
 V100 - Controller Status
 V101 - NowSeconds
-V102 - Mode on Controller
+V102 - Mode on Controller 1=OFF 2=Manual 3=Auto
 V103 - NotifyStatus : for debugging will delete
 V105 - WiFi Signal Strength
 Thanks to @Costas:
@@ -25,7 +25,7 @@ char currentTime[9];
 bool clockSync = false;
 unsigned int nowseconds = 999;
 
-int mode = 0;
+int mode = 0;  //EEPROM location 1
 int manuel1 = 0;
 int manuel2 = 0;
 int manuel3 = 0;
@@ -36,7 +36,7 @@ int auto2 = 0;
 int auto3 = 0;
 int auto4 = 0;
 int auto5 = 0;
-int alertstatus = 1;  //EEPROM location 1
+int alertstatus = 1;  //EEPROM location 50
 int valve1state = 999;  //999 is error status
 int valve2state = 999;
 int valve3state = 999;
@@ -551,13 +551,15 @@ void automode()
 }
 
 
-void activetoday(){         // check if schedule #1 should run today
+void activetoday(){  // check if schedule #1 should run today
+if(mode == 3){
   if(Time.year() != 1970){
     Blynk.syncVirtual(V21);  // sync scheduler #1
     Blynk.syncVirtual(V22);
     Blynk.syncVirtual(V23);
     Blynk.syncVirtual(V24);
     Blynk.syncVirtual(V25);
+  }
   }
 }
 
