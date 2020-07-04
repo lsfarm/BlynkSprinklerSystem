@@ -42,13 +42,16 @@ struct valve_t {
   bool       state;
   WidgetLED  led;
 };
-const int nValves = 5;                                      // number of valves
+const int nValves = 8;                                      // number of valves
 valve_t valve[nValves] = 
-{ { D2, false, LOW, WidgetLED(V1) }
-, { D3, false, LOW, WidgetLED(V2) }
-, { D4, false, LOW, WidgetLED(V3) }
-, { D5, false, LOW, WidgetLED(V4) }
-, { D6, false, LOW, WidgetLED(V5) }
+{ { D0, false, LOW, WidgetLED(V1) }
+, { D1, false, LOW, WidgetLED(V2) }
+, { D2, false, LOW, WidgetLED(V3) }
+, { D3, false, LOW, WidgetLED(V4) }
+, { D4, false, LOW, WidgetLED(V5) }
+, { D5, false, LOW, WidgetLED(V6) }
+, { D6, false, LOW, WidgetLED(V7) }
+, { D7, false, LOW, WidgetLED(V8) }
 };
 
 // Software Timers have too limited stack for the calls
