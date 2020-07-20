@@ -23,7 +23,7 @@ bool holdoffsend = FALSE;
 int delayedsend;
 int delayedsend2;
 
-const char   *auth       = "sgmD0T0O3vBNUZjRcLJFQ2oHAxuclV-W";
+const char   *auth       = "***";
 const char   *GREEN      = "#008000"; //"#23C48E"
 const char   *BLUE       = "#04C0F8";
 const char   *YELLOW     = "#ED9D00";
