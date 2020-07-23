@@ -11,10 +11,12 @@ V4X  - Channel Start Seconds
 V5X  - Channel Stop Seconds
 V90  - Blynk App Notifications Enable/Disable
 V100 - Controller Status
-V101 - secNow
+V101 - Garage Door Last Activatated
 V102 - Mode on Controller 1=OFF 2=Manual 3=Auto
 V103 - NotifyStatus : for debugging will delete
 V105 - WiFi Signal Strength
+V106 - Garage Door on D7 Dustins
+V110 - dB Wifi Signal >>>>DELETE<<<<<
 Thanks to @Costas:
 https://community.blynk.cc/t/time-input-widget-and-eventor/14868/16
 */
@@ -22,8 +24,10 @@ https://community.blynk.cc/t/time-input-widget-and-eventor/14868/16
 bool holdoffsend = FALSE;
 int delayedsend;
 int delayedsend2;
+int gdoorstate;
 
-const char   *auth       = "***";
+//const char   *auth       = "***"; //mine
+const char   *auth       = "***"; //Dustins
 const char   *GREEN      = "#008000"; //"#23C48E"
 const char   *BLUE       = "#04C0F8";
 const char   *YELLOW     = "#ED9D00";
@@ -68,6 +72,25 @@ BLYNK_WRITE(V90)
   EEPROM.put(50, alertStatus);
 }
 
+void door_off()
+{
+    digitalWrite(valve[7].pin, HIGH);
+}
+
+BLYNK_WRITE(V106)
+{
+    gdoorstate = param.asInt();
+    if (gdoorstate == 1)
+    {
+       digitalWrite(valve[7].pin, !gdoorstate);
+       int delayedOff = timer.setTimeout(800, door_off); 
+       Blynk.virtualWrite(V100, "!!Garage Door Moving!!");
+       Blynk.virtualWrite(V101, Time.format("%r - %a %D"));
+       sendInfoaftercommand();
+    }
+    
+}
+
 /////////************* **********/////////
 //             Mode Selection           //
 /////////************* **********/////////
@@ -87,10 +110,10 @@ BLYNK_WRITE(V0) {
     default:
       mode = unknown;
   }
-
+  sendInfoaftercommand();
   setMode(mode);  
-  if (mode != unknown) 
-    EEPROM.put(1, mode);                              //not used--may use if Wifi issues and blynk_connect fails
+  //if (mode != unknown) 
+    //EEPROM.put(1, mode);                              //not used--may use if Wifi issues and blynk_connect fails
 }
 
 /////////************* **********/////////
@@ -103,7 +126,8 @@ void blynkWriteManual(int nr, int value) {
   
   switch (mode) {
     case off:
-      Blynk.virtualWrite(V11, 0);
+      //Blynk.virtualWrite(V11, 0);
+      Blynk.virtualWrite(V11+nr, 0);
       Blynk.notify("Select Manual or Auto Mode");
       break;
       
@@ -155,6 +179,7 @@ void blynkWriteAuto(int nr, const BlynkParam& param) {
       Blynk.setProperty(V1+nr, "color", BLUE);
       Blynk.virtualWrite(V11+nr, HIGH);
       digitalWrite(valve[nr].pin, LOW);
+      sendInfoaftercommand();
     }                  
     if(secStop -31 <= secNow && secNow <= secStop + 31) {               
       snprintf(msg, sizeof(msg), "Zone %d Stopping  AUTOMODE", nr+1);
@@ -162,6 +187,7 @@ void blynkWriteAuto(int nr, const BlynkParam& param) {
       Blynk.setProperty(V1+nr, "color", YELLOW);
       Blynk.virtualWrite(V11+nr, LOW);
       digitalWrite(valve[nr].pin, HIGH);
+      sendInfoaftercommand();
     }               
     
     if(alertStatus) 
@@ -190,9 +216,9 @@ void setup() {
 
     timer.setInterval(60000L, activeToday);  // check every 60s if ON / OFF trigger time has been reached
     timer.setInterval(1000L, clockDisplay);  // check every second if time has been obtained from the server
-    timer.setInterval(15000L, sendInfo);
-    delayedsend = timer.setInterval(5500, sendInfo);
-    delayedsend2 = timer.setInterval(6000, resethold);
+    timer.setInterval(20000L, sendInfo);
+    //delayedsend = timer.setTimeout(5500, sendInfo);
+    //delayedsend2 = timer.setTimeout(6000, resethold);
   
     //Blynk.virtualWrite(V0, 2);
     for (int i = 0; i < nValves; i++) {
@@ -218,20 +244,34 @@ void resethold () {
 } 
 
 void sendInfoaftercommand () {
-    timer.restartTimer(delayedsend);
-    timer.restartTimer(delayedsend2);
+    delayedsend = timer.setTimeout(4500, sendInfo2);
+    delayedsend2 = timer.setTimeout(10000, resethold);
+    //timer.restartTimer(delayedsend);
+    //timer.restartTimer(delayedsend2);
     holdoffsend = 1;
     //int delayedOff = timer.setTimeout(5000, sendInfo);
 }
 
+void sendInfo2() {
+    //Blynk.virtualWrite(V100, "heyu");
+    Blynk.virtualWrite(V100, Time.format("%r - %a %D"));
+    //Blynk.virtualWrite(V105, WiFi.RSSI().getStrength());
+    Blynk.virtualWrite(V110, WiFi.RSSI());
+    
+    for (int i = 0; i < nValves; i++) {
+        valve[i].state = !digitalRead(valve[i].pin);
+        Blynk.virtualWrite(V31+i, valve[i].state);
+  }
+}
 void sendInfo() {
   if (holdoffsend == 0)
   {
     Blynk.virtualWrite(V100, Time.format("%r - %a %D"));
-    Blynk.virtualWrite(V101, secNow);
-    Blynk.virtualWrite(V102, mode);
-    Blynk.virtualWrite(V103, alertStatus); // may delete
+    //Blynk.virtualWrite(V101, secNow);
+    //Blynk.virtualWrite(V102, mode);
+    //Blynk.virtualWrite(V103, alertStatus); // may delete
     Blynk.virtualWrite(V105, WiFi.RSSI().getStrength());
+    //Blynk.virtualWrite(V110, WiFi.RSSI());
   }
     
   for (int i = 0; i < nValves; i++) {
