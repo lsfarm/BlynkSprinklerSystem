@@ -15,16 +15,20 @@ V101 - Garage Door Last Activatated
 V102 - Mode on Controller 1=OFF 2=Manual 3=Auto
 V103 - NotifyStatus : for debugging will delete
 V105 - WiFi Signal Strength
-V106 - Garage Door on D7 Dustins
+V106 - Garage Door on D7 Dustins trigger
+V107 - Garage door lock out button
+V108 - Door lock state (padlock icon)
 V110 - dB Wifi Signal >>>>DELETE<<<<<
 Thanks to @Costas:
 https://community.blynk.cc/t/time-input-widget-and-eventor/14868/16
 */
 #include <blynk.h>
+
 bool holdoffsend = FALSE;
 int delayedsend;
 int delayedsend2;
 int gdoorstate;
+int gdoorlock = 1;
 
 //const char   *auth       = "***"; //mine
 const char   *auth       = "***"; //Dustins
@@ -77,10 +81,14 @@ void door_off()
     digitalWrite(valve[7].pin, HIGH);
 }
 
+/////////************* **********/////////
+//              Garage Door             //
+/////////************* **********/////////
+
 BLYNK_WRITE(V106)
 {
     gdoorstate = param.asInt();
-    if (gdoorstate == 1)
+    if (gdoorstate == 1 && gdoorlock == 1)
     {
        digitalWrite(valve[7].pin, !gdoorstate);
        int delayedOff = timer.setTimeout(800, door_off); 
@@ -88,7 +96,14 @@ BLYNK_WRITE(V106)
        Blynk.virtualWrite(V101, Time.format("%r - %a %D"));
        sendInfoaftercommand();
     }
+    if (gdoorlock == 0) {Blynk.notify("Door Locked");}
     
+}
+BLYNK_WRITE(V107)
+{
+    gdoorlock = param.asInt();
+    if(gdoorlock == 0) {Blynk.virtualWrite(V108, "   🔒");}
+    if(gdoorlock == 1) {Blynk.virtualWrite(V108, " ");}
 }
 
 /////////************* **********/////////
@@ -220,7 +235,6 @@ void setup() {
     //delayedsend = timer.setTimeout(5500, sendInfo);
     //delayedsend2 = timer.setTimeout(6000, resethold);
   
-    //Blynk.virtualWrite(V0, 2);
     for (int i = 0; i < nValves; i++) {
       pinMode(valve[i].pin, OUTPUT);
       digitalWrite(valve[i].pin, HIGH);
@@ -237,6 +251,8 @@ void loop() {
 void firstrun() {
   EEPROM.get(50, alertStatus);
   Blynk.virtualWrite(V90, alertStatus);
+  Blynk.virtualWrite(V107, gdoorlock);
+  Blynk.virtualWrite(V108, " ");
 }
 
 void resethold () {
@@ -272,6 +288,13 @@ void sendInfo() {
     //Blynk.virtualWrite(V103, alertStatus); // may delete
     Blynk.virtualWrite(V105, WiFi.RSSI().getStrength());
     //Blynk.virtualWrite(V110, WiFi.RSSI());
+    int wifi = WiFi.RSSI().getStrength();
+    if(wifi < 80){
+        Blynk.virtualWrite(V125, Time.format("%r - %a %D"));
+        WiFi.disconnect();
+        delay(500);
+        WiFi.connect();
+    }
   }
     
   for (int i = 0; i < nValves; i++) {
