@@ -9,6 +9,12 @@ V2X  - Auto Switch :: Time Input Channel
 V3X  - Actual Valve State
 V4X  - Channel Start Seconds
 V5X  - Channel Stop Seconds
+/////NEW adding in more room for 20 zones
+VX   - Status LED :: Not working correctly, won't switch colors with app closed
+V1X  - Manual Switch
+V2X  - Auto Switch :: Time Input Channel
+V3X  - Actual Valve State
+//
 V90  - Blynk App Notifications Enable/Disable
 V100 - Controller Status
 V101 - Garage Door Last Activatated
@@ -20,10 +26,21 @@ V107 - Garage door lock out button
 V108 - Door lock state (padlock icon)
 V110 - dB Wifi Signal >>>>DELETE<<<<<
 V120 - Temp from BME280
+V121 - Humidity from BME280
 Thanks to @Costas:
 https://community.blynk.cc/t/time-input-widget-and-eventor/14868/16
 */
 #include <blynk.h>
+
+#define Grandpas  1
+#define I2Crelay  1
+#define Dustins   0
+#define D0D7relay 0
+
+#define BMEsensor 1
+#define wifireset 0  // if 1 reconnects to wifi if less than 80%
+
+
 #include <Grove_Air_quality_Sensor.h>
 #include <Adafruit_BME280.h>
 Adafruit_BME280 bme;
@@ -32,16 +49,7 @@ int temp, pressure, humidity;
 #define bitSet(value, bit) ((value) |= (1UL << (bit)))
 #define bitClear(value, bit) ((value) &= ~(1UL << (bit)))
 #define bitWrite(value, bit, bitvalue) (bitvalue ? bitSet(value, bit) : bitClear(value, bit))
-
-
 byte x = 0b11111111;
-#define Grandpas  1
-#define I2Crelay  1
-#define Dustins   0
-#define D0D7relay 0
-
-#define BMEsensor 1
-#define wifireset 0  // if 1 reconnects to wifi if less than 80%
 
 #include <OneWire.h>
 #define ADDR 0x27
@@ -53,8 +61,8 @@ int gdoorstate;
 int gdoorlock = 1;
 
 //#if Grandpas == 1 
-const char   *auth       = "s*******-W"; //mine
-//const char   *auth       = "lr******E"; //Dustins
+const char   *auth       = "sgmD0T0O3vBNUZjRcLJFQ2oHAxuclV-W"; //mine
+//const char   *auth       = "lreUKOmBNfHhrE0oglgIbTZprRVUJhtE"; //Dustins
 const char   *GREEN      = "#008000"; //"#23C48E"
 const char   *BLUE       = "#04C0F8";
 const char   *YELLOW     = "#ED9D00";
@@ -168,12 +176,13 @@ void blynkWriteManual(int nr, int value) {
       break;
       
     case manual:
-    case automatic:  //bit write 1 == off
-      //x = 0b11111111;  // the 0b prefix indicates a binary constant
-      //Serial.println(x, BIN); // 10000000
-      bitWrite(x, nr, !valve[nr].manual);  // write 1 to the least significant bit of x
-      i2c_relay(ADDR, x);
-      //digitalWrite(valve[nr].pin, !valve[nr].manual);
+    case automatic:  
+      if(I2Crelay){ //bit write 1 == off      
+         x = 0b11111111;  // this will shut everything off
+         bitWrite(x, nr, !valve[nr].manual);  // write 1 to the least significant bit of x
+         i2c_relay(ADDR, x);
+        }
+      if(D0D7relay) {digitalWrite(valve[nr].pin, !valve[nr].manual);}
       valve[nr].led.setColor(valve[nr].manual ? GREEN : RED);
       snprintf(msg, sizeof(msg), "Zone %d Turning %s", nr+1, valve[nr].manual ? "On" : "Off");
       Blynk.virtualWrite(V100, msg);
@@ -192,6 +201,12 @@ BLYNK_WRITE(V12) { blynkWriteManual(1, param.asInt()); }
 BLYNK_WRITE(V13) { blynkWriteManual(2, param.asInt()); }
 BLYNK_WRITE(V14) { blynkWriteManual(3, param.asInt()); }
 BLYNK_WRITE(V15) { blynkWriteManual(4, param.asInt()); }
+BLYNK_WRITE(V16) { blynkWriteManual(5, param.asInt()); }
+BLYNK_WRITE(V17) { blynkWriteManual(6, param.asInt()); }
+BLYNK_WRITE(V18) { blynkWriteManual(7, param.asInt()); }
+BLYNK_WRITE(V19) { blynkWriteManual(8, param.asInt()); }
+
+
 
 
 /////////************* **********/////////
@@ -218,7 +233,12 @@ void blynkWriteAuto(int nr, const BlynkParam& param) {
       Blynk.virtualWrite(V100, msg);
       Blynk.setProperty(V1+nr, "color", BLUE);
       Blynk.virtualWrite(V11+nr, HIGH);
-      digitalWrite(valve[nr].pin, LOW);
+      if(I2Crelay){ //bit write 1 == off      
+         x = 0b11111111;  // this will shut everything off
+         bitWrite(x, nr, !valve[nr].manual);  // write 1 to the least significant bit of x
+         i2c_relay(ADDR, x);
+        }
+      if(D0D7relay) {digitalWrite(valve[nr].pin, LOW);}
       sendInfoaftercommand();
     }                  
     if(secStop -31 <= secNow && secNow <= secStop + 31) {               
@@ -226,7 +246,8 @@ void blynkWriteAuto(int nr, const BlynkParam& param) {
       Blynk.virtualWrite(V100, msg);
       Blynk.setProperty(V1+nr, "color", YELLOW);
       Blynk.virtualWrite(V11+nr, LOW);
-      digitalWrite(valve[nr].pin, HIGH);
+      if(D0D7relay) {digitalWrite(valve[nr].pin, HIGH);}
+      if(I2Crelay) {i2c_relay(ADDR, 0b11111111);}
       sendInfoaftercommand();
     }               
     
@@ -320,16 +341,22 @@ void sendInfo2() {
     //Blynk.virtualWrite(V105, WiFi.RSSI().getStrength());
     Blynk.virtualWrite(V110, WiFi.RSSI());
     
-    for (int i = 0; i < nValves; i++) {
-        valve[i].state = !digitalRead(valve[i].pin);
-        Blynk.virtualWrite(V31+i, valve[i].state);
-  }
+    if(D0D7relay) 
+    {
+        for (int i = 0; i < nValves; i++)
+        {
+          valve[i].state = !digitalRead(valve[i].pin);
+          Blynk.virtualWrite(V31+i, valve[i].state);
+        }
+    }
 }
+
 void sendInfo() {
   if (holdoffsend == 0)
   {
       getBMEValues(temp, pressure, humidity);
       Blynk.virtualWrite(V120, temp);
+      Blynk.virtualWrite(V121, humidity);
       Blynk.virtualWrite(V100, Time.format("%r - %a %D"));
       //Blynk.virtualWrite(V101, secNow);
       //Blynk.virtualWrite(V102, mode);
@@ -345,31 +372,58 @@ void sendInfo() {
           }
   }
     
-  for (int i = 0; i < nValves; i++) {
-    valve[i].state = !digitalRead(valve[i].pin);
-    Blynk.virtualWrite(V31+i, valve[i].state);
-  }
+    if(D0D7relay) 
+    {
+        for (int i = 0; i < nValves; i++)
+        {
+          valve[i].state = !digitalRead(valve[i].pin);
+          Blynk.virtualWrite(V31+i, valve[i].state);
+        }
+    }
 }
 
 void setMode(MODE m) {
   switch (m) {
     case off:
-      for (int i = 0; i < nValves; i++) {
-        valve[i].led.off();
-        Blynk.virtualWrite(V11+i, LOW);
-        digitalWrite(valve[i].pin, HIGH);
-      }
+      if(D0D7relay){
+          for (int i = 0; i < nValves; i++) {
+              valve[i].led.off();
+              Blynk.virtualWrite(V11+i, LOW);
+              digitalWrite(valve[i].pin, HIGH);
+            }
+        }
+        if(I2Crelay){ //bit write 1 == off 
+            for (int i = 0; i < nValves; i++) {
+              valve[i].led.off();
+              Blynk.virtualWrite(V11+i, LOW);
+            }
+          x = 0b11111111;  // this will shut everything off
+          //bitWrite(x, nr, !valve[nr].manual);  // write 1 to the least significant bit of x
+          i2c_relay(ADDR, x);
+        }
       break;
       
     case manual:
     case automatic:
-      for (int i = 0; i < nValves; i++) {
-        valve[i].led.on();
-        valve[i].led.setColor((m == manual)? RED : YELLOW);
-        Blynk.virtualWrite(V11+i, LOW);
-        digitalWrite(valve[i].pin, HIGH);
-      }
-      
+      if(D0D7relay){
+          for (int i = 0; i < nValves; i++) {
+              valve[i].led.on();
+              valve[i].led.setColor((m == manual)? RED : YELLOW);
+              Blynk.virtualWrite(V11+i, LOW);
+              digitalWrite(valve[i].pin, HIGH);
+            }
+       }
+       if(I2Crelay){ //bit write 1 == off      
+          for (int i = 0; i < nValves; i++) {
+              valve[i].led.on();
+              valve[i].led.setColor((m == manual)? RED : YELLOW);
+              Blynk.virtualWrite(V11+i, LOW);
+           }
+         x = 0b11111111;  // this will shut everything off
+         //bitWrite(x, nr, !valve[nr].manual);  // write 1 to the least significant bit of x
+         i2c_relay(ADDR, x);
+        }
+       
     default: 
       break;
   }
