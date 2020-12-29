@@ -3,114 +3,127 @@
 /////////************* **********/////////
 /*
 V0   - Mode Switch
+V10  = Terminal
+https://github.com/ControlEverythingCom/NCD16Relay/blob/master/firmware/NCD16Relay.cpp
+>> https://github.com/ControlEverythingCom/NCD16Relay/blob/master/README.md
+relayController.turnOffAllRelays();
+relayController.turnOnRelay(relayNumber);
+relayController.toggleRelay(i);
 */
 
 #include <blynk.h>
 char auth[] = "zh7lIH_MEeMqn_drxNhOhut37IxDcYrk";
 WidgetTerminal terminal(V10);
 BlynkTimer timer;
+enum  MODE { off = 1, manual = 2, automatic = 3, unknown = 999 };
+MODE         mode        = unknown;
+void         setMode(MODE m);
 
-#include <OneWire.h>
-#define  ON 1
-#define OFF 0
-#define address 0x20    //!!0x20!!        // i2c slave address from 0x20 to 0x27
+#include <NCD16Relay.h>
+NCD16Relay R1;
 
-unsigned char i;
-unsigned char variable_LOW;
-unsigned char variable_HIGH;
-unsigned int  mode_byte;        // 16bit unsigned variable
-unsigned int FAST = 1000;
-
-void setup() {
-    Time.zone(-5);
-    Blynk.begin(auth);
-    timer.setInterval(5000L, startcycle);
-    Wire.begin();
-    Wire.beginTransmission(0x20);
-    Wire.write(0x00);             // A register
-    Wire.write(0x00);             // set all of port A to outputs
-    Wire.endTransmission();
-
-    Wire.beginTransmission(0x20);
-    Wire.write((byte)0x01);       // B register
-    Wire.write((byte)0x00);       // set all of port B to outputs
-    Wire.endTransmission(); 
-    
-    turnonrelays();
+/////////************* **********/////////
+//             Mode Selection           //
+/////////************* **********/////////
+BLYNK_WRITE(V0) {
+  switch (mode = (MODE)param.asInt())
+  {
+    case off:
+      Blynk.virtualWrite(V100, "Mode: OFF");
+      break;
+    case manual: 
+      Blynk.virtualWrite(V100, "Mode: Manual");
+      break;
+    case automatic: 
+      Blynk.virtualWrite(V100, "Mode: Automatic");
+      break;
+    default:
+      mode = unknown;
+  }
+  //sendInfoaftercommand();
+  setMode(mode);  
+  //if (mode != unknown) 
+    //EEPROM.put(1, mode);                              //not used--may use if Wifi issues and blynk_connect fails
 }
 
+BLYNK_WRITE(V1) {
+  long startTimeInSecs = param[0].asLong();
+  terminal.println(startTimeInSecs);
+  //Serial.println();
+}
+
+void setup() {
+    Time.zone(-4);
+    Blynk.begin(auth);
+    timer.setInterval(1000L, startcycle);
+    
+    R1.setAddress(0, 0, 0);
+    if(R1.initialized){
+        terminal.println("Controller is ready");
+    }else{
+        terminal.println("Controller not ready");
+    }
+    R1.turnOffAllRelays();
+}
 
 void loop() {
     Blynk.run();
     timer.run();
-    //x = 0b01111111;  // this will shut everything off
-         //bitWrite(x, nr, !valve[nr].manual);  // write 1 to the least significant bit of x
-    //i2c_relay(ADDR, x);
-    ch_mode(address,1,ON);  delay(FAST);//ch_mode(address,1,OFF);  delay(FAST);   // Relay  #1 ON and after delay OFF
-    //ch_mode(address,2,ON);
-    terminal.println(Time.format("%D %r - "));
 }
 
-void i2c_relay(unsigned char addr, unsigned char value)
+void startcycle()
 {
-  Wire.beginTransmission(addr);             
-  Wire.write(value);               
-  Wire.endTransmission();  
-  
+    R1.turnOnAllRelays(1);
+    R1.turnOnRelay(15);
+    int hey = R1.readRelayStatus(1);
+    /*for(int i = 1; i < 17; i++){
+        delay(50);
+        relayController.toggleRelay(i);
+    }*/
+    terminal.print(Time.format("%D %r - "));
+    terminal.println(hey);
+    terminal.flush();
 }
 
-void startcycle() 
-{
-    
-}
-
-void ch_mode(unsigned char addr, unsigned int channel, unsigned char mode){   
-
-     switch (channel) { case 16 : channel =  7; break;
-                        case 15 : channel =  6; break;
-                        case 14 : channel =  5; break;
-                        case 13 : channel =  4; break;
-                        case 12 : channel =  3; break;
-                        case 11 : channel =  2; break;
-                        case 10 : channel =  1; break;
-                        case  9 : channel =  0; break;
-                        case  8 : channel = 15; break;
-                        case  7 : channel = 14; break;
-                        case  6 : channel = 13; break;
-                        case  5 : channel = 12; break;
-                        case  4 : channel = 11; break;
-                        case  3 : channel = 10; break;
-                        case  2 : channel =  9; break;
-                        case  1 : channel =  8; break; }
-
-     mode_byte &= ~(1<<(channel));
-     terminal.print(mode_byte);
-     terminal.println(" mode_byte");
-     terminal.flush();
-     mode_byte |= mode<<channel;
-
-     //variable_LOW = lowByte(mode_byte);
-     //variable_HIGH = highByte(mode_byte);
-
-     Wire.beginTransmission(addr);
-     Wire.write(0x12);            // address bank A
-     Wire.write(variable_LOW);
-     Wire.endTransmission();
-     terminal.println(addr);
-     
-     Wire.beginTransmission(addr);
-     Wire.write(0x13);            // address bank B
-     Wire.write(variable_HIGH);
-     Wire.endTransmission();
-     terminal.println(addr);
-  
-}
-
-
-void turnonrelays(){
-    Wire.beginTransmission(address);
-    Wire.write(18);
-    Wire.write(255);
-    Wire.write(255);
-    byte status = Wire.endTransmission();
+void setMode(MODE m) {
+  switch (m) {
+    case off:
+    terminal.println("inmodeOFF");
+      /*if(D0D7relay){
+          for (int i = 0; i < nValves; i++) {
+              valve[i].led.off();
+              Blynk.virtualWrite(V21+i, LOW);
+              digitalWrite(valve[i].pin, HIGH);
+            }
+        }
+        if(I2Crelay){ //bit write 1 == off 
+            for (int i = 0; i < nValves; i++) {
+              valve[i].led.off();
+              Blynk.virtualWrite(V21+i, LOW);
+            }
+        }*/
+      break;
+      
+    case manual:
+    case automatic:
+      terminal.println("inMODEmanandauto");
+      /*if(D0D7relay){
+          for (int i = 0; i < nValves; i++) {
+              valve[i].led.on();
+              valve[i].led.setColor((m == manual)? RED : YELLOW);
+              Blynk.virtualWrite(V21+i, LOW);
+              digitalWrite(valve[i].pin, HIGH);
+            }
+       }
+       if(I2Crelay){ //bit write 1 == off      
+          for (int i = 0; i < nValves; i++) {
+              valve[i].led.on();
+              valve[i].led.setColor((m == manual)? RED : YELLOW);
+              Blynk.virtualWrite(V21+i, LOW);
+           }
+        }*/
+       
+    default: 
+      break;
+  }
 }
