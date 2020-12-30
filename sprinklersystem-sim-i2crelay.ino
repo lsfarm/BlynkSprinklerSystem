@@ -30,6 +30,7 @@ long startTimeInSec;
 long zoneRunTime;
 int previousDay = 0;
 int count = 1;
+int secoundcount;
 long zorun = 1000L;
 //>> User Adjusted <<//
 int numZones = 12;
@@ -123,9 +124,9 @@ void setup() {
     Blynk.begin(auth);
     Blynk.syncVirtual(V0, V1, V2);
     //timer.setInterval(1000L, startcycle);
-    Blynk.notify("Power Outage  Reenter Times"); //this isn't working 
+    Blynk.notify("!Power Outage!  Controller has restarted");
     terminal.println(zoneRunTime);
-    R1.setAddress(0, 0, 0);
+    R1.setAddress(1, 1, 1);
     if(R1.initialized){
         terminal.println("Relay is ready");
         terminal.flush();
@@ -146,22 +147,29 @@ void loop() {
   }
 }
 
+void turnon() {
+    R1.turnOnRelay(count);
+}
+
 void startcycle()
 {
-    R1.turnOffAllRelays();
-    R1.turnOnRelay(count); //put this inside a small delay
+    R1.turnOffRelay(count - 1);
+    secoundcount = count;
+    int delay1 = timer.setTimeout(1000L, [] () { R1.turnOnRelay(secoundcount); });
     terminal.print("Count: ");
     terminal.println(count);
     if (count != numZones) {
         int delayedOff = timer.setTimeout(zoneRunTime, startcycle);
+        count++;
     }
     else {
         int delayedOff = timer.setTimeout(zoneRunTime, [] () {
             R1.turnOffAllRelays();
+            //previousDay = 1;  //used to debug
         });
         count = 1;
     }
-    count++;
+    
     //int hey = R1.readRelayStatus(1);
     //terminal.print(Time.format("%D %r - "));
     //terminal.println(hey);
