@@ -8,15 +8,19 @@ V45  - 21-45 reserved for inputs
 V10  = Terminal
 https://github.com/ControlEverythingCom/NCD16Relay/blob/master/firmware/NCD16Relay.cpp
 >> https://github.com/ControlEverythingCom/NCD16Relay/blob/master/README.md
-relayController.turnOffAllRelays();
+relayController.turnOffAllRelays();  !!this doesn't work at all!! if you do this than next time turnOnRelay(relayNumber); comes around it will turn on entire set
 relayController.turnOnRelay(relayNumber);
 relayController.toggleRelay(i);
       terminal.println(Time.local() % 86400); //this gives time of day in secounds
       terminal.println(Time.day());           //this gives day of month
+      
+!!Issues!!
+-- auto mode contuines even when switched back to manual mode
 */
 
 #include <blynk.h>
-char auth[] = "zh7lIH_MEeMqn_drxNhOhut37IxDcYrk";
+//char auth[] = "**"; //mine
+char auth[] = "**"; //kelly's
 WidgetTerminal terminal(V10);
 BlynkTimer timer;
 enum  MODE { off = 1, manual = 2, automatic = 3, unknown = 999 }; //https://www.baldengineer.com/state-machine-with-enum-tutorial.html
@@ -28,13 +32,41 @@ NCD16Relay R1;
 
 long startTimeInSec;
 long zoneRunTime;
+long zoneRunTimeAsSec;
 int previousDay = 0;
 int count = 1;
 int secoundcount;
-long zorun = 1000L;
 //>> User Adjusted <<//
+bool sendTOblynk = 1;  //this sends v21-numZones button status to blynk in auto mode
 int numZones = 12;
 
+BLYNK_WRITE(V1) { //Time Input Widget
+  startTimeInSec = param[0].asLong();
+  terminal.print("startTimeInSec: ");
+  terminal.println(startTimeInSec);
+  terminal.flush();
+  finishTimeCal();
+}
+BLYNK_WRITE(V2) {
+    zoneRunTime = param[0].asLong(); //as minute  !!not yet tho
+    zoneRunTimeAsSec = zoneRunTime;
+    zoneRunTime = zoneRunTime * 1000;  //as milli sec
+    terminal.print("zoneRunTime: ");
+    terminal.println(zoneRunTime);
+    terminal.flush();
+    finishTimeCal();
+}
+
+void finishTimeCal() {// time.zone messes this up!!  terminal.print(Time.format("%D %r - "));
+    Time.zone(0);
+    long finTime = startTimeInSec + zoneRunTimeAsSec; //this is sec
+    Blynk.virtualWrite(V3, Time.format(finTime, "%r"));
+    terminal.print("finTime: ");
+    terminal.println(Time.format(finTime));
+    terminal.println(Time.format("%D %r - "));
+    terminal.flush();
+    Time.zone(-6);
+}
 /////////************* **********/////////
 //             Mode Selection           //
 /////////************* **********/////////
@@ -104,21 +136,6 @@ BLYNK_WRITE(V30) { blynkWriteManual(9, param.asInt()); }
 BLYNK_WRITE(V31) { blynkWriteManual(10, param.asInt()); }
 BLYNK_WRITE(V32) { blynkWriteManual(11, param.asInt()); }
 
-
-BLYNK_WRITE(V1) {
-  startTimeInSec = param[0].asLong();
-  terminal.print("startTimeInSec: ");
-  terminal.println(startTimeInSec);
-  terminal.flush();
-}
-BLYNK_WRITE(V2) {
-    zoneRunTime = param[0].asLong();
-    zoneRunTime = zoneRunTime * 60;
-    terminal.print("zoneRunTime: ");
-    terminal.println(zoneRunTime);
-    terminal.flush();
-}
-
 void setup() {
     Time.zone(-6);
     Blynk.begin(auth);
@@ -147,15 +164,12 @@ void loop() {
   }
 }
 
-void turnon() {
-    R1.turnOnRelay(count);
-}
-
 void startcycle()
 {
     R1.turnOffRelay(count - 1);
-    secoundcount = count;
-    int delay1 = timer.setTimeout(1000L, [] () { R1.turnOnRelay(secoundcount); });
+    if(sendTOblynk) {Blynk.virtualWrite(V20+count-1, LOW);}
+    secoundcount = count;  //count gets ++ before R1.turnOnRelay;
+    int delay1 = timer.setTimeout(1000L, [] () { R1.turnOnRelay(secoundcount); if(sendTOblynk) {Blynk.virtualWrite(V20+secoundcount, HIGH);}});
     terminal.print("Count: ");
     terminal.println(count);
     if (count != numZones) {
@@ -164,13 +178,14 @@ void startcycle()
     }
     else {
         int delayedOff = timer.setTimeout(zoneRunTime, [] () {
-            R1.turnOffAllRelays();
+            R1.turnOffRelay(numZones);
+            if(sendTOblynk) {Blynk.virtualWrite(V20+numZones, LOW);}
             //previousDay = 1;  //used to debug
         });
         count = 1;
     }
     
-    //int hey = R1.readRelayStatus(1);
+    //int hey = R1.readRelayStatus(2);
     //terminal.print(Time.format("%D %r - "));
     //terminal.println(hey);
     terminal.flush();
@@ -179,43 +194,22 @@ void startcycle()
 void setMode(MODE m) {
   switch (m) {
     case off:
-    terminal.println("inmodeOFF");
-    terminal.flush();
-      /*if(D0D7relay){
-          for (int i = 0; i < nValves; i++) {
-              valve[i].led.off();
-              Blynk.virtualWrite(V21+i, LOW);
-              digitalWrite(valve[i].pin, HIGH);
-            }
-        }
-        if(I2Crelay){ //bit write 1 == off 
-            for (int i = 0; i < nValves; i++) {
-              valve[i].led.off();
-              Blynk.virtualWrite(V21+i, LOW);
-            }
-        }*/
+      for (int i = 0; i < numZones; i++) {
+          R1.turnOffRelay(i+1);
+          Blynk.virtualWrite(V21+i, LOW);
+      }
+      terminal.println("inMODEoff");
+      terminal.flush();
       break;
       
     case manual:
     case automatic:
+      for (int i = 0; i < numZones; i++) {
+          R1.turnOffRelay(i+1);
+          Blynk.virtualWrite(V21+i, LOW);
+      }
       terminal.println("inMODEmanandauto");
       terminal.flush();
-      /*if(D0D7relay){
-          for (int i = 0; i < nValves; i++) {
-              valve[i].led.on();
-              valve[i].led.setColor((m == manual)? RED : YELLOW);
-              Blynk.virtualWrite(V21+i, LOW);
-              digitalWrite(valve[i].pin, HIGH);
-            }
-       }
-       if(I2Crelay){ //bit write 1 == off      
-          for (int i = 0; i < nValves; i++) {
-              valve[i].led.on();
-              valve[i].led.setColor((m == manual)? RED : YELLOW);
-              Blynk.virtualWrite(V21+i, LOW);
-           }
-        }*/
-       
     default: 
       break;
   }
