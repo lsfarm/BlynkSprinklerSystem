@@ -8,6 +8,7 @@ V2   - Time printed back on this channel after adjusted via V1
 V5   - Time Input Widget for auto zone start time
 V6   - Zone Run time in auto mode
 V7   - Auto zone finish time
+V9   - Table Widget - used for showing value start and stop times
 V10  - Terminal
 V11  - Time Input Widget for advanced mode start time
 V12  - Advanced mode zone run time
@@ -27,8 +28,11 @@ relayController.toggleRelay(i);
 */
 
 #include <blynk.h>
-//char auth[] = "**"; //mine
-char auth[] = "4df***7e3"; //kelly's
+//char auth[] = "zh***cYrk"; //mine
+char auth[] = "4***"; //kelly's
+//WidgetTable table;
+//BLYNK_ATTACH_WIDGET(table, V9);
+//int rowIndex = 0;
 WidgetTerminal terminal(V10);
 BlynkTimer timer;
 enum  MODE { off = 1, manual = 2, automatic = 3, advanced = 4, unknown = 999 }; //https://www.baldengineer.com/state-machine-with-enum-tutorial.html
@@ -38,6 +42,7 @@ void         setMode(MODE m);
 #include <NCD16Relay.h>
 NCD16Relay R1;
 /* User Adjusted ***************************************************************************************************************/
+bool debugEnable = 1;
 bool sendTOblynk = 1;  //this sends v21-numZones button status to blynk in auto mode
 const int numZones = 12; // need const for advanSched[]
 /* Program Variables **********************************************************************************************************/
@@ -62,18 +67,23 @@ BLYNK_WRITE(V1) { //used to adjust for time change  wished I could find a simple
 }
 BLYNK_WRITE(V5) { //Time Input Widget
   startTimeInSec = param[0].asLong();
-  terminal.print("startTimeInSec: ");
-  terminal.println(startTimeInSec);
-  terminal.flush();
+  if (debugEnable) {
+      terminal.print("startTimeInSec: ");
+      terminal.println(startTimeInSec);
+      terminal.flush();
+   }
   finishTimeCal();
 }
 BLYNK_WRITE(V6) {
-    zoneRunTime = param[0].asLong(); //as minute  !!not yet tho
-    zoneRunTimeAsSec = zoneRunTime;
-    zoneRunTime = zoneRunTime * 1000;  //as milli sec
-    terminal.print("zoneRunTime: ");
-    terminal.println(zoneRunTime);
-    terminal.flush();
+    zoneRunTime = param[0].asLong();   //as minute
+    zoneRunTime = 60 * zoneRunTime;    //convert minutes to seconds >>take this one out for debuging loops in secounds
+    zoneRunTimeAsSec = zoneRunTime;    //used in finsihTimeCal()
+    zoneRunTime = zoneRunTime * 1000L;  //convert secounds to  milli sec
+    if (debugEnable) {
+        terminal.print("zoneRunTime: ");
+        terminal.println(zoneRunTime);
+        terminal.flush();
+    }
     finishTimeCal();
 }
 void finishTimeCal() {// V7  !!time.zone messes this up!!  terminal.print(Time.format("%D %r - "));
@@ -94,15 +104,15 @@ BLYNK_WRITE(V0) {
   switch (mode = (MODE)param.asInt())
   {
     case off:
-      Blynk.virtualWrite(V100, "Mode: OFF");
+      //Blynk.virtualWrite(V100, "Mode: OFF");
       //terminal.println(mode);
       //terminal.flush();
       break;
     case manual: 
-      Blynk.virtualWrite(V100, "Mode: Manual");
+      //Blynk.virtualWrite(V100, "Mode: Manual");
       break;
     case automatic: 
-      Blynk.virtualWrite(V100, "Mode: Automatic");
+      //Blynk.virtualWrite(V100, "Mode: Automatic");
       break;
     case advanced:
       break;
@@ -163,18 +173,22 @@ BLYNK_WRITE(V32) { blynkWriteManual(11, param.asInt()); }
 /////////************* **********/////////
 BLYNK_WRITE(V11) { //Time Input Widget  Zone Start Time
   startTimeInSecADVAN = param[0].asLong();
-  terminal.print("startTimeInSecADVAN: ");
-  terminal.println(startTimeInSecADVAN);
-  terminal.flush();
+  if(debugEnable){
+      terminal.print("startTimeInSecADVAN: ");
+      terminal.println(startTimeInSecADVAN);
+      terminal.flush();
+  }
   //finishTimeCal();
 }
 BLYNK_WRITE(V12) {
-    zoneRunTimeADVAN = param[0].asLong(); //as minute  !!not yet tho
-    //zoneRunTimeAsSec = zoneRunTime;
-    zoneRunTimeADVAN = zoneRunTimeADVAN * 1000;  //as milli sec
-    terminal.print("zoneRunTimeADVAN: ");
-    terminal.println(zoneRunTimeADVAN);
-    terminal.flush();
+    zoneRunTimeADVAN = param[0].asLong();        //as minute
+    zoneRunTimeADVAN = zoneRunTimeADVAN * 60;    //convert minutes to seconds
+    zoneRunTimeADVAN = zoneRunTimeADVAN * 1000;  //converts seconds to millisec
+    if (debugEnable) {
+        terminal.print("zoneRunTimeADVAN: ");
+        terminal.println(zoneRunTimeADVAN);
+        terminal.flush();
+    }
     //finishTimeCal();
 }
 BLYNK_WRITE(V101) {
@@ -201,12 +215,14 @@ BLYNK_WRITE(V112) { switch (advanSched[11][0] = param.asInt() - 1) {} advanSched
 void setup() {
     //Time.zone(-6);
     Blynk.begin(auth);
-    Blynk.syncVirtual(V0, V1, V5, V6, V11, V12);
+    Blynk.syncVirtual(V0, V1, V5, V6, V11, V12, V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
     //delay(500);
-    /*for(int i = 0; i<numZones; i++) {
+    /*for(int i = 0; i<6; i++) {
         Blynk.syncVirtual(V101+i);
         //delay(500);
     }*/
+    //table.addRow(rowIndex, "Test row", millis() / 1000);
+    //table.pickRow(rowIndex);
     //delay(1000);
     //timer.setInterval(3000L, startcycleADVAN);
     Blynk.notify("!Power Outage!  Controller has restarted");
@@ -226,14 +242,13 @@ void loop() {
     timer.run();
     if (previousDay != Time.day() &&  Time.local() % 86400 >= startTimeInSec && mode == automatic) { //auto mode cycle
         previousDay = Time.day();
-        startcycle();
+        startcycleAUTO();
    }
        if (previousDayADVAN != Time.day() &&  Time.local() % 86400 >= startTimeInSecADVAN && mode == advanced) { //advanced mode cycle
         previousDayADVAN = Time.day();
         terminal.println("inloop345678");
         terminal.flush();
         counterADVAN = 0;
-        //R1.turnOnRelay(counterADVAN + 1);
         startcycleADVAN();
     }
 }
@@ -284,31 +299,29 @@ void startcycleADVAN() {
     } 
 }
 
-void startcycle() {
-    R1.turnOffRelay(count - 1); // add if to block out turn on relay 0?
-    if(sendTOblynk) {Blynk.virtualWrite(V20+count-1, LOW);}
-    secoundcount = count;  //count gets ++ before R1.turnOnRelay;
-    int delay1 = timer.setTimeout(1000L, [] () { R1.turnOnRelay(secoundcount); if(sendTOblynk) {Blynk.virtualWrite(V20+secoundcount, HIGH);}});
-    terminal.print("Count: ");
-    terminal.println(count);
-    if (count != numZones) {
-        int delayedOff = timer.setTimeout(zoneRunTime, startcycle);
-        count++;
-    }
-    else {
-        int delayedOff = timer.setTimeout(zoneRunTime, [] () {
+void startcycleAUTO() {
+    int delay1 = timer.setTimeout(1000L, [] () { R1.turnOnRelay(count); if(sendTOblynk) {Blynk.virtualWrite(V20+count, HIGH); terminal.print("Zone ON Count: "); terminal.println(count); terminal.flush();}});
+    int delayedOff = timer.setTimeout(zoneRunTime, [] () {
+        if (count != numZones) {//if we haven't reached the last zone
+            R1.turnOffRelay(count);
+            if(sendTOblynk) {Blynk.virtualWrite(V20+count, LOW);}
+            terminal.print(Time.format("%D %r - "));
+            terminal.println(" - Manualtimerset");
+            count++;
+            startcycleAUTO();
+        }
+        else { //we've reached last zone, turn it off and reset count
             R1.turnOffRelay(numZones);
             if(sendTOblynk) {Blynk.virtualWrite(V20+numZones, LOW);}
+            count = 1;
+            terminal.print(Time.format("%D %r - "));
+            terminal.println("last zone reached");
+            terminal.flush();
             //previousDay = 1;  //used to debug
-        });
-        count = 1;
-    }
-    
-    //int hey = R1.readRelayStatus(2);
-    //terminal.print(Time.format("%D %r - "));
-    //terminal.println(hey);
+        }
+    });
     terminal.print(Time.format("%D %r - "));
-    terminal.println("bottom of startcycle()");
+    terminal.println("bottom of startcycleAUTO()");
     terminal.flush();
 }
 
