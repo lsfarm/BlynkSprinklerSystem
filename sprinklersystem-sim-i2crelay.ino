@@ -28,8 +28,8 @@ relayController.toggleRelay(i);
 */
 
 #include <blynk.h>
-//char auth[] = "zh**"; //mine
-char auth[] = "***"; //kelly's
+//char auth[] = "****"; //mine
+char auth[] = "****"; //kelly's
 //WidgetTable table;
 //BLYNK_ATTACH_WIDGET(table, V9);
 //int rowIndex = 0;
@@ -60,6 +60,8 @@ int counterADVAN;
 int setupdelay;  // delayed timer for some blynk stuff that won't load in setup
 //const int arr = numZones - 1;
 int advanSched[numZones] [2]; //[numZones - 1]; //advanced schedule this holds values from V101 - (V101+numZones)  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
+unsigned long startTime[numZones];
+unsigned long stopTime[numZones];
 
 BLYNK_WRITE(V1) { //used to adjust for time change  wished I could find a simple way to do this automatically
     timeOffset = param[0].asInt();
@@ -144,10 +146,16 @@ void blynkWriteManual(int nr, int value) {
     case manual:
       if(!value) {
           R1.turnOffRelay(nr+1); 
-          Blynk.virtualWrite(V9, "update", nr, (Time.format("%D %r - ")), nr); 
-          Blynk.virtualWrite(V9, F("deselect"), 6);
+          updateBlynkTable(nr, value);
+          //Blynk.virtualWrite(V9, "update", nr, (Time.format("%I:%M%p[%d]")), (Time.format("%I:%M%p[%d]"))); 
+          //Blynk.virtualWrite(V9, F("deselect"), nr);
         }
-      if(value) { R1.turnOnRelay(nr+1);  Blynk.virtualWrite(V9, "update", nr, "on", nr+1);  Blynk.virtualWrite(V9, "deselect", 5);}
+      if(value) { 
+          R1.turnOnRelay(nr+1);
+          updateBlynkTable(nr, value);
+          //Blynk.virtualWrite(V9, "update", nr, "on", nr+1);  
+          //Blynk.virtualWrite(V9, "select", nr);
+        }
       break;
     case automatic: 
       Blynk.virtualWrite(V21+nr, 0);
@@ -158,6 +166,52 @@ void blynkWriteManual(int nr, int value) {
     default:
       break;
   }
+}
+
+void updateBlynkTable(int zoneIndex, bool zoneOn) {
+    //long startTime[numZones];
+    //unsigned long stopTime[numZones];
+    if (zoneOn) {startTime[zoneIndex] = Time.now();}
+    if (!zoneOn) {stopTime[zoneIndex] = Time.now();}
+    //startTime = Time.now();
+    terminal.print(zoneIndex + 1);
+    terminal.print(": ");
+    terminal.println(startTime[zoneIndex]);
+    
+    if (!zoneOn) {
+    terminal.print("ZoneOFF ");
+    terminal.println(zoneOn);
+    terminal.print("Index 0: ");
+    terminal.println(stopTime[0]);
+    terminal.print("Index 1: ");
+    terminal.println(stopTime[1]);
+    terminal.print("Index 2: ");
+    terminal.println(stopTime[2]);
+    terminal.print("Index 3: ");
+    terminal.println(stopTime[3]);
+    terminal.flush();
+    }
+    if (zoneOn) {
+    terminal.print("ZoneOn ");
+    terminal.println(zoneOn);
+    terminal.print("Index 0: ");
+    terminal.println(startTime[0]);
+    terminal.print("Index 1: ");
+    terminal.println(startTime[1]);
+    terminal.print("Index 2: ");
+    terminal.println(startTime[2]);
+    terminal.print("Index 3: ");
+    terminal.println(startTime[3]);
+    terminal.flush();
+    }
+    //  Start       Stop
+    //Time[Day] - Time[Day]
+    String value = (Time.format(stopTime[zoneIndex], "%I:%M%p[%d]"));
+    String name =  (Time.format(startTime[zoneIndex], "%I:%M%p[%d]"));
+    //sprintf(name, ("%I:%M%p[%d]"), stopTime[0]);
+    Blynk.virtualWrite(V9, "update", zoneIndex, name, zoneIndex + 1);
+    if (zoneOn) { Blynk.virtualWrite(V9, "select", zoneIndex);   }
+    if (!zoneOn){ Blynk.virtualWrite(V9, "deselect", zoneIndex); }
 }
 
 BLYNK_WRITE(V21) { blynkWriteManual(0, param.asInt()); }
@@ -223,9 +277,6 @@ void setup() {
     Blynk.syncVirtual(V0, V1, V5, V6, V11, V12); // V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
     Blynk.virtualWrite(V9, "clr");
     setupdelay = timer.setTimeout(5000L, Blynk_init);
-    //table.addRow(rowIndex, "Test row", millis() / 1000);
-    //table.pickRow(rowIndex);
-    //timer.setInterval(3000L, startcycleADVAN);
     Blynk.notify("!Power Outage!  Controller has restarted");
     R1.setAddress(1, 1, 1);
     if(R1.initialized){
@@ -235,7 +286,6 @@ void setup() {
         terminal.println("Relay not ready");
         terminal.flush();
     }
-    //R1.turnOffAllRelays();
 }
 
 void Blynk_init() { //running this in setup causes device to lockup
