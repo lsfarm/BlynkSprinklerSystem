@@ -24,12 +24,12 @@ relayController.toggleRelay(i);
       terminal.println(Time.day());           //this gives day of month
       
 !!Issues!!
--- auto mode contuines even when switched back to manual mode
+-- auto mode contuines even when switched back to manual mode <<bandaid for now is to clear remaning loop from running  >>would like to add clearTimeout()
 */
 
 #include <blynk.h>
-//char auth[] = "zh***cYrk"; //mine
-char auth[] = "4***"; //kelly's
+//char auth[] = "zh**"; //mine
+char auth[] = "***"; //kelly's
 //WidgetTable table;
 //BLYNK_ATTACH_WIDGET(table, V9);
 //int rowIndex = 0;
@@ -57,13 +57,14 @@ int previousDayADVAN = 0;
 int count = 1;
 int secoundcount;
 int counterADVAN;
+int setupdelay;  // delayed timer for some blynk stuff that won't load in setup
 //const int arr = numZones - 1;
 int advanSched[numZones] [2]; //[numZones - 1]; //advanced schedule this holds values from V101 - (V101+numZones)  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
 
 BLYNK_WRITE(V1) { //used to adjust for time change  wished I could find a simple way to do this automatically
     timeOffset = param[0].asInt();
     Time.zone(timeOffset);
-    Blynk.virtualWrite(V2, Time.format("%r - %D"));
+    Blynk.virtualWrite(V2, Time.format("%r:%D"));
 }
 BLYNK_WRITE(V5) { //Time Input Widget
   startTimeInSec = param[0].asLong();
@@ -141,8 +142,12 @@ void blynkWriteManual(int nr, int value) {
       break;
       
     case manual:
-      if(value == 0) {R1.turnOffRelay(nr+1);}
-      if(value)      {R1.turnOnRelay(nr+1);}
+      if(!value) {
+          R1.turnOffRelay(nr+1); 
+          Blynk.virtualWrite(V9, "update", nr, (Time.format("%D %r - ")), nr); 
+          Blynk.virtualWrite(V9, F("deselect"), 6);
+        }
+      if(value) { R1.turnOnRelay(nr+1);  Blynk.virtualWrite(V9, "update", nr, "on", nr+1);  Blynk.virtualWrite(V9, "deselect", 5);}
       break;
     case automatic: 
       Blynk.virtualWrite(V21+nr, 0);
@@ -215,15 +220,11 @@ BLYNK_WRITE(V112) { switch (advanSched[11][0] = param.asInt() - 1) {} advanSched
 void setup() {
     //Time.zone(-6);
     Blynk.begin(auth);
-    Blynk.syncVirtual(V0, V1, V5, V6, V11, V12, V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
-    //delay(500);
-    /*for(int i = 0; i<6; i++) {
-        Blynk.syncVirtual(V101+i);
-        //delay(500);
-    }*/
+    Blynk.syncVirtual(V0, V1, V5, V6, V11, V12); // V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
+    Blynk.virtualWrite(V9, "clr");
+    setupdelay = timer.setTimeout(5000L, Blynk_init);
     //table.addRow(rowIndex, "Test row", millis() / 1000);
     //table.pickRow(rowIndex);
-    //delay(1000);
     //timer.setInterval(3000L, startcycleADVAN);
     Blynk.notify("!Power Outage!  Controller has restarted");
     R1.setAddress(1, 1, 1);
@@ -235,6 +236,19 @@ void setup() {
         terminal.flush();
     }
     //R1.turnOffAllRelays();
+}
+
+void Blynk_init() { //running this in setup causes device to lockup
+    for(byte i = 0; i<numZones; i++) {
+        Blynk.syncVirtual(V101+i);
+        //delay(500);
+    }
+    for(byte i = 0; i < numZones; i++) {
+        char nodeName[9];
+        sprintf_P(nodeName, PSTR("Zone %d"), (i+1));
+        Blynk.virtualWrite(V9, F("add"), i, F("Unknown"), nodeName);
+        Blynk.virtualWrite(V9, F("deselect"), i);
+    }
 }
 
 void loop() {
