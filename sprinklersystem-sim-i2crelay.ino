@@ -67,7 +67,7 @@ unsigned long stopTime[numZones];
 BLYNK_WRITE(V1) { //used to adjust for time change  wished I could find a simple way to do this automatically
     timeOffset = param[0].asInt();
     Time.zone(timeOffset);
-    Blynk.virtualWrite(V2, Time.format("%r %e/%d"));
+    Blynk.virtualWrite(V2, Time.format("%r %m/%e"));
 }
 BLYNK_WRITE(V5) { //Time Input Widget
   startTimeInSec = param[0].asLong();
@@ -378,7 +378,7 @@ void setMode(MODE m) {
       for (int i = 0; i < numZones; i++) {
           R1.turnOffRelay(i+1);
           Blynk.virtualWrite(V21+i, LOW);
-          Blynk.virtualWrite(V9, "deslect", i);
+          Blynk.virtualWrite(V9, "deselect", i);
       }
       terminal.println("inMODEoff");
       terminal.flush();
@@ -390,7 +390,7 @@ void setMode(MODE m) {
       for (int i = 0; i < numZones; i++) {
           R1.turnOffRelay(i+1);
           Blynk.virtualWrite(V21+i, LOW);
-          Blynk.virtualWrite(V9, "deslect", i);
+          Blynk.virtualWrite(V9, "deselect", i);
       }
       terminal.println("inMODEmanandauto");
       terminal.flush();
