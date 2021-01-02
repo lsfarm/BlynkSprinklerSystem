@@ -25,7 +25,7 @@ relayController.toggleRelay(i);
       
 !!Issues!!
 -- auto mode contuines even when switched back to manual mode <<bandaid for now is to clear remaning loop from running  >>would like to add clearTimeout()
--- switching modes on V0 doesn't get reflected on BlynkTable
+-- switching modes on V0 doesn't get reflected on BlynkTable times -- it will change icon tho.
 */
 
 #include <blynk.h>
@@ -159,6 +159,7 @@ void blynkWriteManual(int nr, int value) {
         }
       break;
     case automatic: 
+    case advanced:
       Blynk.virtualWrite(V21+nr, 0);
       Blynk.notify("In Auto Mode - Selecting Manual Mode will dicountinue todays schedule");
       break;
@@ -243,7 +244,7 @@ void setup() {
     Blynk.syncVirtual(V0, V1, V5, V6, V11, V12); // V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
     Blynk.virtualWrite(V9, "clr");
     setupdelay = timer.setTimeout(5000L, Blynk_init);
-    Blynk.notify("!Power Outage!  Controller has restarted");
+    Blynk.notify("!Power Outage Controller Has Restarted!");
     R1.setAddress(1, 1, 1);
     if(R1.initialized){
         terminal.println("Relay is ready");
@@ -274,6 +275,7 @@ void loop() {
     timer.run();
     if (previousDay != Time.day() &&  Time.local() % 86400 >= startTimeInSec && mode == automatic) { //auto mode cycle
         previousDay = Time.day();
+        count = 1; // in case mode gets changed
         startcycleAUTO();
    }
        if (previousDayADVAN != Time.day() &&  Time.local() % 86400 >= startTimeInSecADVAN && mode == advanced) { //advanced mode cycle
@@ -285,19 +287,29 @@ void loop() {
     }
 }
 
-void continuecycleADVAN() {
+void continuecycleADVAN() { //to be deleted
     R1.turnOffRelay(counterADVAN + 1);
     updateBlynkTable(counterADVAN, 0);
     counterADVAN++;
-    if(counterADVAN < numZones) {startcycleADVAN();}
+    if(counterADVAN < numZones && mode == advanced) {startcycleADVAN();}
     //else {previousDayADVAN = 0; counterADVAN = 0; terminal.println("previousday reset"); terminal.flush();}  //for debugging
 }
 
 void startcycleADVAN() {
-    terminal.print("co#: ");
-    terminal.println(counterADVAN);
-    if (advanSched[counterADVAN][1] == 1) {R1.turnOnRelay(counterADVAN + 1); updateBlynkTable(counterADVAN, 1); terminal.print("running advanced CYCLE Zone: "); terminal.println(counterADVAN + 1);terminal.flush();}
-    int delayedStop = timer.setTimeout(zoneRunTimeADVAN, continuecycleADVAN);
+  terminal.print("co#: ");
+  terminal.println(counterADVAN);
+  if (advanSched[counterADVAN][1] == 1) {
+    R1.turnOnRelay(counterADVAN + 1);
+    updateBlynkTable(counterADVAN, 1);
+    terminal.print("running advanced CYCLE Zone: ");
+    terminal.println(counterADVAN + 1);
+    terminal.flush();
+  }
+  int zoneOn = timer.setTimeout(zoneRunTimeADVAN, [] () {
+    if (advanSched[counterADVAN][1] == 1) {//if zone was on
+      R1.turnOffRelay(counterADVAN + 1);
+      updateBlynkTable(counterADVAN, 0);
+    }
     switch (advanSched[counterADVAN][0]) {
       case 0://off
         advanSched[counterADVAN][1] = 0;
@@ -307,20 +319,29 @@ void startcycleADVAN() {
         break;
       case 2://every other day
         if (advanSched[counterADVAN][1] == 1) {
-            advanSched[counterADVAN][1] = 2;
+          advanSched[counterADVAN][1] = 2;
         }
         else {
-            advanSched[counterADVAN][1] = 1;
+          advanSched[counterADVAN][1] = 1;
         }
         break;
       case 3://every 3rd day
-        if (advanSched[counterADVAN][1] == 1) { advanSched[counterADVAN][1] = 3; }
-        else { advanSched[counterADVAN][1] = advanSched[counterADVAN][1] - 1; }
+        if (advanSched[counterADVAN][1] == 1) {
+          advanSched[counterADVAN][1] = 3;
+        }
+        else {
+          advanSched[counterADVAN][1] = advanSched[counterADVAN][1] - 1;
+        }
         break;
       default:
         terminal.println("Error in startcycle SwitchCase");
-      break;
-    }    
+        break;
+    }
+    counterADVAN++;
+    if (counterADVAN < numZones && mode == advanced) {
+      startcycleADVAN(); //to add delay in here before next round
+    }
+  }); //end of zoneOn timer
 }
 
 void startcycleAUTO() {
@@ -333,7 +354,7 @@ void startcycleAUTO() {
             terminal.print(Time.format("%D %r - "));
             terminal.println(" - Manualtimerset");
             count++;
-            startcycleAUTO();
+            if (mode == automatic) {startcycleAUTO();}
         }
         else { //we've reached last zone, turn it off and reset count
             R1.turnOffRelay(numZones);
@@ -357,6 +378,7 @@ void setMode(MODE m) {
       for (int i = 0; i < numZones; i++) {
           R1.turnOffRelay(i+1);
           Blynk.virtualWrite(V21+i, LOW);
+          Blynk.virtualWrite(V9, "deslect", i);
       }
       terminal.println("inMODEoff");
       terminal.flush();
@@ -368,6 +390,7 @@ void setMode(MODE m) {
       for (int i = 0; i < numZones; i++) {
           R1.turnOffRelay(i+1);
           Blynk.virtualWrite(V21+i, LOW);
+          Blynk.virtualWrite(V9, "deslect", i);
       }
       terminal.println("inMODEmanandauto");
       terminal.flush();
