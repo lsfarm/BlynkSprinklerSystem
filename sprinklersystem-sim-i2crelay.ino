@@ -25,6 +25,7 @@ relayController.toggleRelay(i);
       
 !!Issues!!
 -- auto mode contuines even when switched back to manual mode <<bandaid for now is to clear remaning loop from running  >>would like to add clearTimeout()
+-- switching modes on V0 doesn't get reflected on BlynkTable
 */
 
 #include <blynk.h>
@@ -66,7 +67,7 @@ unsigned long stopTime[numZones];
 BLYNK_WRITE(V1) { //used to adjust for time change  wished I could find a simple way to do this automatically
     timeOffset = param[0].asInt();
     Time.zone(timeOffset);
-    Blynk.virtualWrite(V2, Time.format("%r:%D"));
+    Blynk.virtualWrite(V2, Time.format("%r %e/%d"));
 }
 BLYNK_WRITE(V5) { //Time Input Widget
   startTimeInSec = param[0].asLong();
@@ -168,50 +169,15 @@ void blynkWriteManual(int nr, int value) {
   }
 }
 
-void updateBlynkTable(int zoneIndex, bool zoneOn) {
-    //long startTime[numZones];
-    //unsigned long stopTime[numZones];
-    if (zoneOn) {startTime[zoneIndex] = Time.now();}
-    if (!zoneOn) {stopTime[zoneIndex] = Time.now();}
-    //startTime = Time.now();
-    terminal.print(zoneIndex + 1);
-    terminal.print(": ");
-    terminal.println(startTime[zoneIndex]);
-    
-    if (!zoneOn) {
-    terminal.print("ZoneOFF ");
-    terminal.println(zoneOn);
-    terminal.print("Index 0: ");
-    terminal.println(stopTime[0]);
-    terminal.print("Index 1: ");
-    terminal.println(stopTime[1]);
-    terminal.print("Index 2: ");
-    terminal.println(stopTime[2]);
-    terminal.print("Index 3: ");
-    terminal.println(stopTime[3]);
-    terminal.flush();
-    }
-    if (zoneOn) {
-    terminal.print("ZoneOn ");
-    terminal.println(zoneOn);
-    terminal.print("Index 0: ");
-    terminal.println(startTime[0]);
-    terminal.print("Index 1: ");
-    terminal.println(startTime[1]);
-    terminal.print("Index 2: ");
-    terminal.println(startTime[2]);
-    terminal.print("Index 3: ");
-    terminal.println(startTime[3]);
-    terminal.flush();
-    }
-    //  Start       Stop
-    //Time[Day] - Time[Day]
+void updateBlynkTable(int zoneIndex, bool zoneOn) { //function to update the table with zone start and stop times
+    if (zoneOn) {startTime[zoneIndex] = Time.now();} //save the time zone ?? started
+    if (!zoneOn) {stopTime[zoneIndex] = Time.now();} //save the time zone ?? stopped
     String value = (Time.format(stopTime[zoneIndex], "%I:%M%p[%d]"));
     String name =  (Time.format(startTime[zoneIndex], "%I:%M%p[%d]"));
-    //sprintf(name, ("%I:%M%p[%d]"), stopTime[0]);
-    Blynk.virtualWrite(V9, "update", zoneIndex, name, zoneIndex + 1);
-    if (zoneOn) { Blynk.virtualWrite(V9, "select", zoneIndex);   }
-    if (!zoneOn){ Blynk.virtualWrite(V9, "deselect", zoneIndex); }
+    name = name + " - " + value;
+    Blynk.virtualWrite(V9, "update", zoneIndex, name, zoneIndex + 1);    // Updates name space in Blynk table
+    if (zoneOn) { Blynk.virtualWrite(V9, "select", zoneIndex);   }       //  Start       Stop
+    if (!zoneOn){ Blynk.virtualWrite(V9, "deselect", zoneIndex); }       //Time[Day] - Time[Day]
 }
 
 BLYNK_WRITE(V21) { blynkWriteManual(0, param.asInt()); }
@@ -298,6 +264,8 @@ void Blynk_init() { //running this in setup causes device to lockup
         sprintf_P(nodeName, PSTR("Zone %d"), (i+1));
         Blynk.virtualWrite(V9, F("add"), i, F("Unknown"), nodeName);
         Blynk.virtualWrite(V9, F("deselect"), i);
+        startTime[i] = Time.now(); //pass in current time to array for blynk table !!this actually happens in blynk.syncvirtual V0>>not sure how to do this
+        stopTime[i] = Time.now();  //pass in current time to array for blynk table
     }
 }
 
@@ -319,6 +287,7 @@ void loop() {
 
 void continuecycleADVAN() {
     R1.turnOffRelay(counterADVAN + 1);
+    updateBlynkTable(counterADVAN, 0);
     counterADVAN++;
     if(counterADVAN < numZones) {startcycleADVAN();}
     //else {previousDayADVAN = 0; counterADVAN = 0; terminal.println("previousday reset"); terminal.flush();}  //for debugging
@@ -327,7 +296,7 @@ void continuecycleADVAN() {
 void startcycleADVAN() {
     terminal.print("co#: ");
     terminal.println(counterADVAN);
-    if (advanSched[counterADVAN][1] == 1) {R1.turnOnRelay(counterADVAN + 1); terminal.print("running advanced CYCLE Zone: "); terminal.println(counterADVAN + 1);terminal.flush();}
+    if (advanSched[counterADVAN][1] == 1) {R1.turnOnRelay(counterADVAN + 1); updateBlynkTable(counterADVAN, 1); terminal.print("running advanced CYCLE Zone: "); terminal.println(counterADVAN + 1);terminal.flush();}
     int delayedStop = timer.setTimeout(zoneRunTimeADVAN, continuecycleADVAN);
     switch (advanSched[counterADVAN][0]) {
       case 0://off
@@ -352,22 +321,14 @@ void startcycleADVAN() {
         terminal.println("Error in startcycle SwitchCase");
       break;
     }    
-    for(int i = 0; i<12; i++){
-        terminal.print(i + 1);
-        terminal.print(": ");
-        terminal.print(advanSched[i][0]);
-        terminal.print(":");
-        terminal.println(advanSched[i][1]);
-        terminal.flush();
-        delay(100);
-    } 
 }
 
 void startcycleAUTO() {
-    int delay1 = timer.setTimeout(1000L, [] () { R1.turnOnRelay(count); if(sendTOblynk) {Blynk.virtualWrite(V20+count, HIGH); terminal.print("Zone ON Count: "); terminal.println(count); terminal.flush();}});
+    int delay1 = timer.setTimeout(1000L, [] () { R1.turnOnRelay(count); if(sendTOblynk) {Blynk.virtualWrite(V20+count, HIGH); updateBlynkTable(count - 1, 1); terminal.print("Zone ON Count: "); terminal.println(count); terminal.flush();}});
     int delayedOff = timer.setTimeout(zoneRunTime, [] () {
         if (count != numZones) {//if we haven't reached the last zone
             R1.turnOffRelay(count);
+            updateBlynkTable(count-1, 0);
             if(sendTOblynk) {Blynk.virtualWrite(V20+count, LOW);}
             terminal.print(Time.format("%D %r - "));
             terminal.println(" - Manualtimerset");
@@ -376,6 +337,7 @@ void startcycleAUTO() {
         }
         else { //we've reached last zone, turn it off and reset count
             R1.turnOffRelay(numZones);
+            updateBlynkTable(numZones - 1, 0);
             if(sendTOblynk) {Blynk.virtualWrite(V20+numZones, LOW);}
             count = 1;
             terminal.print(Time.format("%D %r - "));
