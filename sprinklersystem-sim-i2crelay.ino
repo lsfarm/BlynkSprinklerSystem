@@ -282,7 +282,7 @@ void loop() {
         previousDayADVAN = Time.day();
         terminal.println("inloop345678");
         terminal.flush();
-        counterADVAN = 0;
+        counterADVAN = 0; // in case mode gets changed
         startcycleADVAN();
     }
 }
@@ -298,18 +298,28 @@ void continuecycleADVAN() { //to be deleted
 void startcycleADVAN() {
   terminal.print("co#: ");
   terminal.println(counterADVAN);
-  if (advanSched[counterADVAN][1] == 1) {
-    R1.turnOnRelay(counterADVAN + 1);
-    updateBlynkTable(counterADVAN, 1);
+  if (advanSched[counterADVAN][1] == 1) { //if selected zone needs to run today
+    R1.turnOnRelay(counterADVAN + 1);     //turn  zone on
+    updateBlynkTable(counterADVAN, 1);    //update Blynk table
+    stopcycleADVAN();                     //wait zoneRunTime than shut it off
     terminal.print("running advanced CYCLE Zone: ");
     terminal.println(counterADVAN + 1);
     terminal.flush();
   }
+  else {
+      updateAdvanSchedArray();  //if selected zone doesn't need to run today, skip stop cycle and jump to array update.
+  }
+}
+  
+void stopcycleADVAN() { 
   int zoneOn = timer.setTimeout(zoneRunTimeADVAN, [] () {
-    if (advanSched[counterADVAN][1] == 1) {//if zone was on
-      R1.turnOffRelay(counterADVAN + 1);
-      updateBlynkTable(counterADVAN, 0);
-    }
+    R1.turnOffRelay(counterADVAN + 1); 
+    updateBlynkTable(counterADVAN, 0);
+    updateAdvanSchedArray();
+  } );
+}
+
+void updateAdvanSchedArray() {
     switch (advanSched[counterADVAN][0]) {
       case 0://off
         advanSched[counterADVAN][1] = 0;
@@ -341,7 +351,6 @@ void startcycleADVAN() {
     if (counterADVAN < numZones && mode == advanced) {
       startcycleADVAN(); //to add delay in here before next round
     }
-  }); //end of zoneOn timer
 }
 
 void startcycleAUTO() {
