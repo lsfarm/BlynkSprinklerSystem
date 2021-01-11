@@ -60,14 +60,14 @@ int secoundcount;
 int counterADVAN;
 int setupdelay;  // delayed timer for some blynk stuff that won't load in setup
 //const int arr = numZones - 1;
-int advanSched[numZones] [2]; //[numZones - 1]; //advanced schedule this holds values from V101 - (V101+numZones)  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
+int advanSched[numZones] [2]; //advanced schedule this holds values from V101 - (V101+numZones)  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
 unsigned long startTime[numZones];
 unsigned long stopTime[numZones];
 
 BLYNK_WRITE(V1) { //used to adjust for time change  wished I could find a simple way to do this automatically
     timeOffset = param[0].asInt();
     Time.zone(timeOffset);
-    Blynk.virtualWrite(V2, Time.format("%r %m/%e"));
+    Blynk.virtualWrite(V2, Time.format("%r %m/%d"));
 }
 BLYNK_WRITE(V5) { //Time Input Widget
   startTimeInSec = param[0].asLong();
@@ -320,7 +320,7 @@ void stopcycleADVAN() {
 }
 
 void updateAdvanSchedArray() {
-    switch (advanSched[counterADVAN][0]) {
+    switch (advanSched[counterADVAN][0]) {//check valve in first column to see what V101 has asigned to this zone and update 2nd column accourdingly
       case 0://off
         advanSched[counterADVAN][1] = 0;
         break;
