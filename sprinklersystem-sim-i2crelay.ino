@@ -2,18 +2,22 @@
 //          Blynk Assignments           //
 /////////************* **********/////////
 /*
-V0   - Mode Switch
-V1   - Time Offset from UTC used to set correct time on controller
-V2   - Time printed back on this channel after adjusted via V1
-V5   - Time Input Widget for auto zone start time
-V6   - Zone Run time in auto mode
-V7   - Auto zone finish time
-V9   - Table Widget - used for showing value start and stop times
-V10  - Terminal
-V11  - Time Input Widget for advanced mode start time
-V12  - Advanced mode zone run time
-V21  - Manual Valve switch input  
-V45  - 21-45 reserved for inputs
+V0   - Mode Switch (Segment Switch)
+V1   - Time Offset from UTC used to set correct time on controller (Numeric Input)
+V2   - Time printed back on this channel after adjusted via V1 (Value Display)
+V5   - (Time Input Widget) for auto zone start time
+V6   - Zone Run time in auto mode (Numeric Input)
+V7   - Auto zone finish time (Value Display)
+V9   - (Table Widget) - used for showing value start and stop times
+V10  - (Terminal)
+V11  - (Time Input Widget) for advanced mode start time
+V12  - Advanced mode zone run time (Numeric Input)
+V21  - Manual Valve switch input (Styled Button)
+V45  - 21-45 reserved for inputs (Styled Button)
+V101 - (Segment Switch) for advanced mode Case 0=Off - 1=EveryDay - 2=Everyother - 3=Every 3rd Day
+V125 - 101-125 reserved for inputs
+V150 - (Numeric Input Widget) V150 sets how long Zone1 runs for in Advanced Mode <<is there a better widget for this?
+V175 - 150-175 reserved for inputs
 
 https://github.com/ControlEverythingCom/NCD16Relay/blob/master/firmware/NCD16Relay.cpp
 >> https://github.com/ControlEverythingCom/NCD16Relay/blob/master/README.md
@@ -25,15 +29,12 @@ relayController.toggleRelay(i);
       
 !!Issues!!
 -- auto mode contuines even when switched back to manual mode <<bandaid for now is to clear remaning loop from running  >>would like to add clearTimeout()
--- switching modes on V0 doesn't get reflected on BlynkTable times -- it will change icon tho.
+-- switching modes on V0 doesn't get reflected on BlynkTable times -- it will change icon tho. << fixed>debugging
 */
 
 #include <blynk.h>
 //char auth[] = "****"; //mine
 char auth[] = "****"; //kelly's
-//WidgetTable table;
-//BLYNK_ATTACH_WIDGET(table, V9);
-//int rowIndex = 0;
 WidgetTerminal terminal(V10);
 BlynkTimer timer;
 enum  MODE { off = 1, manual = 2, automatic = 3, advanced = 4, unknown = 999 }; //https://www.baldengineer.com/state-machine-with-enum-tutorial.html
@@ -59,8 +60,9 @@ int count = 1;
 int secoundcount;
 int counterADVAN;
 int setupdelay;  // delayed timer for some blynk stuff that won't load in setup
-//const int arr = numZones - 1;
-int advanSched[numZones] [2]; //advanced schedule this holds values from V101 - (V101+numZones)  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
+int advanSched[numZones] [2]; //advanced schedule this holds values from V101 - (V101+numZones) in column [0] and keeps track of the scedule in column [1]  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
+unsigned long runTimeADVAN[numZones]; //to do  plan to tie this to V150-175 for setting run times in advanced mode
+bool zoneStatus[numZones]; //this runs in updateBlynkTable() and is than use to correctly set zone turn off times when mode is changed in setMode() 
 unsigned long startTime[numZones];
 unsigned long stopTime[numZones];
 
@@ -171,6 +173,7 @@ void blynkWriteManual(int nr, int value) {
 }
 
 void updateBlynkTable(int zoneIndex, bool zoneOn) { //function to update the table with zone start and stop times
+    zoneStatus[zoneIndex] = zoneOn;
     if (zoneOn) {startTime[zoneIndex] = Time.now();} //save the time zone ?? started
     if (!zoneOn) {stopTime[zoneIndex] = Time.now();} //save the time zone ?? stopped
     String value = (Time.format(stopTime[zoneIndex], "%I:%M%p[%d]"));
@@ -320,7 +323,7 @@ void stopcycleADVAN() {
 }
 
 void updateAdvanSchedArray() {
-    switch (advanSched[counterADVAN][0]) {//check valve in first column to see what V101 has asigned to this zone and update 2nd column accourdingly
+    switch (advanSched[counterADVAN][0]) {
       case 0://off
         advanSched[counterADVAN][1] = 0;
         break;
@@ -349,7 +352,7 @@ void updateAdvanSchedArray() {
     }
     counterADVAN++;
     if (counterADVAN < numZones && mode == advanced) {
-      startcycleADVAN(); //to add delay in here before next round
+      startcycleADVAN(); //to do - add delay in here before next round
     }
 }
 
@@ -384,25 +387,29 @@ void startcycleAUTO() {
 void setMode(MODE m) {
   switch (m) {
     case off:
-      for (int i = 0; i < numZones; i++) {
-          R1.turnOffRelay(i+1);
-          Blynk.virtualWrite(V21+i, LOW);
-          Blynk.virtualWrite(V9, "deselect", i);
-      }
-      terminal.println("inMODEoff");
-      terminal.flush();
-      break;
+        for (int i = 0; i < numZones; i++) {
+            if(zoneStatus[i]){//if selected zone is on
+                R1.turnOffRelay(i+1);
+                Blynk.virtualWrite(V21+i, LOW);
+                updateBlynkTable(i, 0);
+            }
+        }
+        terminal.println("inMODEoff");
+        terminal.flush();
+        break;
       
     case manual:
     case automatic:
     case advanced:
-      for (int i = 0; i < numZones; i++) {
-          R1.turnOffRelay(i+1);
-          Blynk.virtualWrite(V21+i, LOW);
-          Blynk.virtualWrite(V9, "deselect", i);
-      }
-      terminal.println("inMODEmanandauto");
-      terminal.flush();
+        for (int i = 0; i < numZones; i++) {
+            if(zoneStatus[i]){
+                R1.turnOffRelay(i+1);
+                Blynk.virtualWrite(V21+i, LOW);
+                updateBlynkTable(i, 0);
+            }
+       }
+        terminal.println("inMODEmanandauto");
+        terminal.flush();
     default: 
       break;
   }
