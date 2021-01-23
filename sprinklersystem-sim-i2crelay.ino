@@ -5,13 +5,16 @@
 V0   - Mode Switch (Segment Switch)
 V1   - Time Offset from UTC used to set correct time on controller (Numeric Input)
 V2   - Time printed back on this channel after adjusted via V1 (Value Display)
-V5   - (Time Input Widget) for auto zone start time
-V6   - Zone Run time in auto mode (Numeric Input)
+V3   - Push Button that printed current time back to V2
+V4   - Value Widget that gets time valve in blynk_int() for saving last reboot time
+V5   - (Time Input Widget) for auto zone start time  \
+V6   - Zone Run time in auto mode (Numeric Input)    /
+V8   - Power Supply LED runs in loop() in hasVUSB()
 V7   - Auto zone finish time (Value Display)
 V9   - (Table Widget) - used for showing value start and stop times
 V10  - (Terminal)
-V11  - (Time Input Widget) for advanced mode start time
-V12  - Advanced mode zone run time (Numeric Input)
+V11  - (Time Input Widget) for advanced mode start time \
+V12  - Advanced mode zone run time (Numeric Input)      /
 V21  - Manual Valve switch input (Styled Button)
 V45  - 21-45 reserved for inputs (Styled Button)
 V101 - (Segment Switch) for advanced mode Case 0=Off - 1=EveryDay - 2=Everyother - 3=Every 3rd Day
@@ -32,14 +35,22 @@ relayController.toggleRelay(i);
 -- switching modes on V0 doesn't get reflected on BlynkTable times -- it will change icon tho. << fixed>debugging
 */
 
+/**** Blynky Stuff ***************************************************************************************************************/
 #include <blynk.h>
-//char auth[] = "****"; //mine
-char auth[] = "****"; //kelly's
+char auth[] = "****"; //mine
+//char auth[] = "****"; //kelly's
 WidgetTerminal terminal(V10);
 BlynkTimer timer;
 enum  MODE { off = 1, manual = 2, automatic = 3, advanced = 4, unknown = 999 }; //https://www.baldengineer.com/state-machine-with-enum-tutorial.html
 MODE         mode        = unknown;
 void         setMode(MODE m);
+int timerNA = 99;
+int cycleAUTOtimer  = timerNA;
+int cycleADVANtimer = timerNA;
+/**** PowerMonitoring ***************************************************************************************************************/
+bool hasVUSB(); 
+bool hadVUSB = false;
+WidgetLED pwLED(V8);
 
 #include <NCD16Relay.h>
 NCD16Relay R1;
@@ -70,6 +81,12 @@ BLYNK_WRITE(V1) { //used to adjust for time change  wished I could find a simple
     timeOffset = param[0].asInt();
     Time.zone(timeOffset);
     Blynk.virtualWrite(V2, Time.format("%r %m/%d"));
+}
+BLYNK_WRITE(V3) {
+    int button1 = param.asInt();
+    if (button1) {
+        Blynk.virtualWrite(V2, Time.format("%r %m/%d"));
+    }
 }
 BLYNK_WRITE(V5) { //Time Input Widget
   startTimeInSec = param[0].asLong();
@@ -241,24 +258,20 @@ BLYNK_WRITE(V110) { switch (advanSched[9][0] = param.asInt() - 1) {} advanSched[
 BLYNK_WRITE(V111) { switch (advanSched[10][0] = param.asInt() - 1) {} advanSched[10][1] = advanSched[10][0];}
 BLYNK_WRITE(V112) { switch (advanSched[11][0] = param.asInt() - 1) {} advanSched[11][1] = advanSched[11][0];}
 
-void setup() {
+void setup() { //wished could delay loop() if zone on time is in the past on restart 1st zone turns on right away, but doesn't get recorded in table until its turned off
     //Time.zone(-6);
     Blynk.begin(auth);
     Blynk.syncVirtual(V0, V1, V5, V6, V11, V12); // V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
-    Blynk.virtualWrite(V9, "clr");
+    Blynk.virtualWrite(V9, "clr"); //clear the table
     setupdelay = timer.setTimeout(5000L, Blynk_init);
-    Blynk.notify("!Power Outage Controller Has Restarted!");
+    Blynk.notify("Power Outage Controller Has Restarted!");
     R1.setAddress(1, 1, 1);
-    if(R1.initialized){
-        terminal.println("Relay is ready");
-        terminal.flush();
-    }else{
-        terminal.println("Relay not ready");
-        terminal.flush();
-    }
+    if(R1.initialized){ terminal.println("Relay is ready"); terminal.flush(); }
+    else{ terminal.println("Relay not ready"); terminal.flush(); }
 }
 
 void Blynk_init() { //running this in setup causes device to lockup
+    Blynk.virtualWrite(V4, Time.format("%r %m/%d")); //last reboot time
     for(byte i = 0; i<numZones; i++) {
         Blynk.syncVirtual(V101+i);
         //delay(500);
@@ -276,50 +289,45 @@ void Blynk_init() { //running this in setup causes device to lockup
 void loop() {
     Blynk.run();
     timer.run();
+    bool curVUSB = hasVUSB(); // for checking power supply status at USB
+    if (curVUSB != hadVUSB) { hadVUSB = curVUSB;    if(curVUSB) {pwLED.on();}   else{pwLED.off();}   }
     if (previousDay != Time.day() &&  Time.local() % 86400 >= startTimeInSec && mode == automatic) { //auto mode cycle
         previousDay = Time.day();
         count = 1; // in case mode gets changed
-        startcycleAUTO();
+        startcycleAUTO(); //timer already running check in this function
    }
-       if (previousDayADVAN != Time.day() &&  Time.local() % 86400 >= startTimeInSecADVAN && mode == advanced) { //advanced mode cycle
+       if (previousDayADVAN != Time.day() &&  Time.local() % 86400 >= startTimeInSecADVAN && mode == advanced && !timer.isEnabled(cycleADVANtimer)) { //advanced mode cycle
         previousDayADVAN = Time.day();
         terminal.println("inloop345678");
         terminal.flush();
         counterADVAN = 0; // in case mode gets changed
         startcycleADVAN();
     }
-}
-
-void continuecycleADVAN() { //to be deleted
-    R1.turnOffRelay(counterADVAN + 1);
-    updateBlynkTable(counterADVAN, 0);
-    counterADVAN++;
-    if(counterADVAN < numZones && mode == advanced) {startcycleADVAN();}
-    //else {previousDayADVAN = 0; counterADVAN = 0; terminal.println("previousday reset"); terminal.flush();}  //for debugging
-}
+} //end loop
 
 void startcycleADVAN() {
-  terminal.print("co#: ");
-  terminal.println(counterADVAN);
-  if (advanSched[counterADVAN][1] == 1) { //if selected zone needs to run today
-    R1.turnOnRelay(counterADVAN + 1);     //turn  zone on
-    updateBlynkTable(counterADVAN, 1);    //update Blynk table
-    stopcycleADVAN();                     //wait zoneRunTime than shut it off
-    terminal.print("running advanced CYCLE Zone: ");
-    terminal.println(counterADVAN + 1);
-    terminal.flush();
-  }
-  else {
-      updateAdvanSchedArray();  //if selected zone doesn't need to run today, skip stop cycle and jump to array update.
-  }
+    terminal.print("co#: ");
+    terminal.println(counterADVAN);
+    if (advanSched[counterADVAN][1] == 1) { //if selected zone needs to run today
+        R1.turnOnRelay(counterADVAN + 1);     //turn  zone on
+        updateBlynkTable(counterADVAN, 1);    //update Blynk table
+        stopcycleADVAN();                     //wait zoneRunTime than shut it off
+        terminal.print("running advanced CYCLE Zone: ");
+        terminal.println(counterADVAN + 1);
+        terminal.flush();
+    }
+    else {
+        updateAdvanSchedArray();  //if selected zone doesn't need to run today, skip stop cycle and jump to array update.
+    }
 }
   
 void stopcycleADVAN() { 
-  int zoneOn = timer.setTimeout(zoneRunTimeADVAN, [] () {
-    R1.turnOffRelay(counterADVAN + 1); 
-    updateBlynkTable(counterADVAN, 0);
-    updateAdvanSchedArray();
-  } );
+    cycleADVANtimer = timer.setTimeout(zoneRunTimeADVAN, [] () {
+        cycleADVANtimer = timerNA; //reset timer point to not used
+        R1.turnOffRelay(counterADVAN + 1); 
+        updateBlynkTable(counterADVAN, 0);
+        updateAdvanSchedArray();
+    } );
 }
 
 void updateAdvanSchedArray() {
@@ -351,37 +359,44 @@ void updateAdvanSchedArray() {
         break;
     }
     counterADVAN++;
-    if (counterADVAN < numZones && mode == advanced) {
+    if (counterADVAN < numZones && mode == advanced) { //if we haven't reached the last zone and the mode is still set to advanced
       startcycleADVAN(); //to do - add delay in here before next round
     }
+    else {counterADVAN = 0; }//reset flag
 }
 
 void startcycleAUTO() {
-    int delay1 = timer.setTimeout(1000L, [] () { R1.turnOnRelay(count); if(sendTOblynk) {Blynk.virtualWrite(V20+count, HIGH); updateBlynkTable(count - 1, 1); terminal.print("Zone ON Count: "); terminal.println(count); terminal.flush();}});
-    int delayedOff = timer.setTimeout(zoneRunTime, [] () {
-        if (count != numZones) {//if we haven't reached the last zone
-            R1.turnOffRelay(count);
-            updateBlynkTable(count-1, 0);
-            if(sendTOblynk) {Blynk.virtualWrite(V20+count, LOW);}
-            terminal.print(Time.format("%D %r - "));
-            terminal.println(" - Manualtimerset");
-            count++;
-            if (mode == automatic) {startcycleAUTO();}
-        }
-        else { //we've reached last zone, turn it off and reset count
-            R1.turnOffRelay(numZones);
-            updateBlynkTable(numZones - 1, 0);
-            if(sendTOblynk) {Blynk.virtualWrite(V20+numZones, LOW);}
-            count = 1;
-            terminal.print(Time.format("%D %r - "));
-            terminal.println("last zone reached");
-            terminal.flush();
-            //previousDay = 1;  //used to debug
-        }
-    });
-    terminal.print(Time.format("%D %r - "));
-    terminal.println("bottom of startcycleAUTO()");
-    terminal.flush();
+    if (!timer.isEnabled(cycleAUTOtimer)) {// if the timers already running don't start another cycle (double up)
+        int delay1 = timer.setTimeout(1000L, [] () { R1.turnOnRelay(count); if(sendTOblynk) {Blynk.virtualWrite(V20+count, HIGH); updateBlynkTable(count - 1, 1); terminal.print("Zone ON Count: "); terminal.println(count); terminal.flush();}});
+        cycleAUTOtimer = timer.setTimeout(zoneRunTime, [] () {
+            cycleAUTOtimer = timerNA; //reset pointer for next round
+            if (count != numZones) {//if we haven't reached the last zone
+                R1.turnOffRelay(count);
+                updateBlynkTable(count-1, 0);
+                if(sendTOblynk) {Blynk.virtualWrite(V20+count, LOW);}
+                terminal.print(Time.format("%D %r - "));
+                terminal.println(" - Manualtimerset");
+                count++;
+                if (mode == automatic) {startcycleAUTO();}
+            }
+            else { //we've reached last zone, turn it off and reset count
+                R1.turnOffRelay(numZones);
+                updateBlynkTable(numZones - 1, 0);
+                if(sendTOblynk) {Blynk.virtualWrite(V20+numZones, LOW);}
+                count = 1;
+                terminal.print(Time.format("%D %r - "));
+                terminal.println("last zone reached");
+                terminal.flush();
+                //previousDay = 1;  //used to debug
+            }
+        });
+        terminal.print(Time.format("%D %r - "));
+        terminal.println("bottom of startcycleAUTO()");
+        terminal.flush();
+    }
+    else {
+        Blynk.notify("Error: Auto Timer Already Running");
+    }
 }
 
 void setMode(MODE m) {
@@ -401,6 +416,7 @@ void setMode(MODE m) {
     case manual:
     case automatic:
     case advanced:
+        timer.deleteTimer(cycleAUTOtimer); //trash all future loops if mode is changed //count = 1???? think leave this out for now in case wanna restart latter < put in loop()
         for (int i = 0; i < numZones; i++) {
             if(zoneStatus[i]){
                 R1.turnOffRelay(i+1);
@@ -413,4 +429,10 @@ void setMode(MODE m) {
     default: 
       break;
   }
+}
+
+bool hasVUSB() { //checks if power supplied at USB this runs in loop() - bool curVUSB = hasVUSB(); 
+    uint32_t *pReg = (uint32_t *)0x40000438; // USBREGSTATUS
+
+    return (*pReg & 1) != 0;
 }
