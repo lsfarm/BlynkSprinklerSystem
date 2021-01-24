@@ -5,7 +5,7 @@
 V0   - Mode Switch (Segment Switch)
 V1   - Time Offset from UTC used to set correct time on controller (Numeric Input)
 V2   - Time printed back on this channel after adjusted via V1 (Value Display)
-V3   - Push Button that printed current time back to V2
+V3   - Push Button that prints current time back to V2
 V4   - Value Widget that gets time valve in blynk_int() for saving last reboot time
 V5   - (Time Input Widget) for auto zone start time  \
 V6   - Zone Run time in auto mode (Numeric Input)    /
@@ -21,7 +21,6 @@ V101 - (Segment Switch) for advanced mode Case 0=Off - 1=EveryDay - 2=Everyother
 V125 - 101-125 reserved for inputs
 V150 - (Numeric Input Widget) V150 sets how long Zone1 runs for in Advanced Mode <<is there a better widget for this?
 V175 - 150-175 reserved for inputs
-
 https://github.com/ControlEverythingCom/NCD16Relay/blob/master/firmware/NCD16Relay.cpp
 >> https://github.com/ControlEverythingCom/NCD16Relay/blob/master/README.md
 relayController.turnOffAllRelays();  !!this doesn't work at all!! if you do this than next time turnOnRelay(relayNumber); comes around it will turn on entire set
@@ -37,8 +36,8 @@ relayController.toggleRelay(i);
 
 /**** Blynky Stuff ***************************************************************************************************************/
 #include <blynk.h>
-char auth[] = "****"; //mine
-//char auth[] = "****"; //kelly's
+//char auth[] = "****"; //mine
+char auth[] = "****"; //kelly's
 WidgetTerminal terminal(V10);
 BlynkTimer timer;
 enum  MODE { off = 1, manual = 2, automatic = 3, advanced = 4, unknown = 999 }; //https://www.baldengineer.com/state-machine-with-enum-tutorial.html
@@ -82,7 +81,7 @@ BLYNK_WRITE(V1) { //used to adjust for time change  wished I could find a simple
     Time.zone(timeOffset);
     Blynk.virtualWrite(V2, Time.format("%r %m/%d"));
 }
-BLYNK_WRITE(V3) {
+BLYNK_WRITE(V3) {  //Push Button that prints current time back to V2
     int button1 = param.asInt();
     if (button1) {
         Blynk.virtualWrite(V2, Time.format("%r %m/%d"));
@@ -290,7 +289,7 @@ void loop() {
     Blynk.run();
     timer.run();
     bool curVUSB = hasVUSB(); // for checking power supply status at USB
-    if (curVUSB != hadVUSB) { hadVUSB = curVUSB;    if(curVUSB) {pwLED.on();}   else{pwLED.off();}   }
+    if (curVUSB != hadVUSB) { hadVUSB = curVUSB;    if(curVUSB) {pwLED.on();}   else{pwLED.off(); powerFail();}   }
     if (previousDay != Time.day() &&  Time.local() % 86400 >= startTimeInSec && mode == automatic) { //auto mode cycle
         previousDay = Time.day();
         count = 1; // in case mode gets changed
@@ -304,6 +303,10 @@ void loop() {
         startcycleADVAN();
     }
 } //end loop
+
+void powerFail() { //what should happen when VUSB goes dead
+    Blynk.notify("Power Outage Controller Has Restarted!");
+}
 
 void startcycleADVAN() {
     terminal.print("co#: ");
