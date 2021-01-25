@@ -34,7 +34,6 @@ relayController.toggleRelay(i);
 -- auto mode contuines even when switched back to manual mode <<bandaid for now is to clear remaning loop from running  >>would like to add clearTimeout()
 -- switching modes on V0 doesn't get reflected on BlynkTable times -- it will change icon tho. << fixed>debugging
 */
-
 /**** Blynky Stuff ***************************************************************************************************************/
 #include <blynk.h>
 //char auth[] = "****"; //mine
@@ -254,6 +253,7 @@ void setup() { //wished could delay loop() if zone on time is in the past on res
     Blynk.virtualWrite(V9, "clr"); //clear the table
     setupdelay = timer.setTimeout(5000L, Blynk_init);
     Blynk.notify("Battery Failure Controller Has Restarted!");
+    delay(8000); //allow setup to finish before starting loop()
     //moved to powerRegain()
     /*R1.setAddress(1, 1, 1);
     if(R1.initialized){ terminal.println("Relay is ready"); terminal.flush(); }
@@ -327,7 +327,7 @@ void powerRegain() { //this also runs 1 time on reboot -- need some version of t
             }
         }
     if (debugEnable) {
-        if(R1.initialized){ terminal.println(" Power Restored - Relay is ready"); terminal.flush(); }
+        if(R1.initialized){ terminal.println("Power Restored - Relay is ready"); terminal.flush(); }
         else{ terminal.println("Relay not ready"); terminal.flush(); }
     }
 }
@@ -470,16 +470,17 @@ bool hasVUSB() { //checks if power supplied at USB this runs in loop() - bool cu
     return (*pReg & 1) != 0;
 }
 void signalStrength() {
-    terminal.print(Time.format("%r - "));
-    #if Wiring_Wifi 
-    int wifi = WiFi.RSSI().getStrength();
-    RSSI = wifi;
-    if(debugEnable) {terminal.print(wifi); terminal.println("% WiFi Strength"); terminal.flush(); }
+    int test = WiFi.RSSI().getStrength();
+    //terminal.print(Time.format("%r - ")); terminal.print(test); terminal.flush();
+    #if PLATFORM_ARGON  //why doesn't Wiring_WiFi work here
+        int wifi = WiFi.RSSI().getStrength();
+        RSSI = wifi;
+        if(debugEnable) {terminal.print(wifi); terminal.println("% WiFi Strength"); terminal.flush(); }
     #endif
     #if Wiring_Cellular
-    CellularSignal sig = Cellular.RSSI();  //does this work??
-    RSSI = 999; //RSSI = sig; this isn't working
-    if(debugEnable) {terminal.print(sig); terminal.println("% Cell Strength"); terminal.flush(); }
-    //Log.info("Cellular signal strength: %.02f%%", sig.getStrength());
+        CellularSignal sig = Cellular.RSSI();  //does this work??
+        RSSI = 999; //RSSI = sig; this isn't working
+        if(debugEnable) {terminal.print(sig); terminal.println("% Cell Strength"); terminal.flush(); }
+        //Log.info("Cellular signal strength: %.02f%%", sig.getStrength());
     #endif
 }
