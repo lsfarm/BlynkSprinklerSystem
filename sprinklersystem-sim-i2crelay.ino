@@ -253,7 +253,7 @@ void setup() { //wished could delay loop() if zone on time is in the past on res
     Blynk.virtualWrite(V9, "clr"); //clear the table
     setupdelay = timer.setTimeout(5000L, Blynk_init);
     Blynk.notify("Battery Failure Controller Has Restarted!");
-    delay(8000); //allow setup to finish before starting loop()
+    delay(8000); //allow setup to finish before starting loop() because if in advan mode at power cycle all advan cycles will be skipped V101-numZones hasn't synced yet
     //moved to powerRegain()
     /*R1.setAddress(1, 1, 1);
     if(R1.initialized){ terminal.println("Relay is ready"); terminal.flush(); }
