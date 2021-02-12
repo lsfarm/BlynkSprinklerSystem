@@ -34,10 +34,14 @@ relayController.toggleRelay(i);
 -- auto mode contuines even when switched back to manual mode <<bandaid for now is to clear remaning loop from running  >>would like to add clearTimeout()
 -- switching modes on V0 doesn't get reflected on BlynkTable times -- it will change icon tho. << fixed>debugging
 */
-/**** Blynky Stuff ***************************************************************************************************************/
+#define Boron
+/**** Particle *******************************************************************************************************************/
+int switchdb2b(String command); //particle function
+int refreshTable(String command);
+/**** Blynk* *********************************************************************************************************************/
 #include <blynk.h>
-//char auth[] = "****"; //mine
-char auth[] = "****"; //kelly's
+//char auth[] = "zh7lIH_MEeMqn_drxNhOhut37IxDcYrk"; //mine
+char auth[] = "4dfa1557587b47229d25eea844b787e3"; //kelly's
 WidgetTerminal terminal(V10);
 BlynkTimer timer;
 enum  MODE { off = 1, manual = 2, automatic = 3, advanced = 4, unknown = 999 }; //https://www.baldengineer.com/state-machine-with-enum-tutorial.html
@@ -195,6 +199,16 @@ void updateBlynkTable(int zoneIndex, bool zoneOn) { //function to update the tab
     if (zoneOn) { Blynk.virtualWrite(V9, "select", zoneIndex);   }       //  Start       Stop
     if (!zoneOn){ Blynk.virtualWrite(V9, "deselect", zoneIndex); }       //Time[Day] - Time[Day]
 }
+void refreshBlynkTable() {
+    for (int i = 0; i < numZones; i++) {
+        String value = (Time.format(stopTime[i], "%I:%M%p[%d]"));
+        String name =  (Time.format(startTime[i], "%I:%M%p[%d]"));
+        name = name + " - " + value;
+        Blynk.virtualWrite(V9, "update", i, name, i + 1);    // Updates name space in Blynk table
+        if (zoneStatus[i]) { Blynk.virtualWrite(V9, "select", i);   }       //  Start       Stop
+        if (!zoneStatus[i]){ Blynk.virtualWrite(V9, "deselect", i); }       //Time[Day] - Time[Day]
+    }
+}
 
 BLYNK_WRITE(V21) { blynkWriteManual(0, param.asInt()); }
 BLYNK_WRITE(V22) { blynkWriteManual(1, param.asInt()); }
@@ -258,6 +272,10 @@ void setup() { //wished could delay loop() if zone on time is in the past on res
     /*R1.setAddress(1, 1, 1);
     if(R1.initialized){ terminal.println("Relay is ready"); terminal.flush(); }
     else{ terminal.println("Relay not ready"); terminal.flush(); }*/
+    Particle.function("Debug2Blynk", switchdb2b);
+    Particle.function("RefreshTable", refreshTable);
+    Particle.variable("Debug2Blynk", debugEnable);
+    Particle.variable("Mode", mode); //this isn't working
 }
 
 void Blynk_init() { //running this in setup causes device to lockup
@@ -281,13 +299,13 @@ void loop() {
     Blynk.run();
     timer.run();
     bool curVUSB = hasVUSB(); // for checking power supply status at USB
-    if (curVUSB != hadVUSB) { hadVUSB = curVUSB;  if(curVUSB) {pwLED.on(); powerRegain();}   else{pwLED.off(); powerFail();}   }
+    if (curVUSB != hadVUSB) { hadVUSB = curVUSB;  if(curVUSB) {pwLED.on(); powerRegain();}   else{pwLED.off(); powerFail();}   } //this neeeds to stay above startcycles()
     if (previousDay != Time.day() &&  Time.local() % 86400 >= startTimeInSec && mode == automatic) { //auto mode cycle
         if (curVUSB) {
+            if(debugEnable) {terminal.println("startcycleAUTO() called from loop"); terminal.flush();}
             previousDay = Time.day();
             count = 1; // in case mode gets changed
             startcycleAUTO(); //timer already running check in this function
-            if(debugEnable) {terminal.println("startcycleAUTO() called from loop"); terminal.flush();}
         }
         else{
             previousDay = Time.day();
@@ -297,10 +315,10 @@ void loop() {
     }
     if (previousDayADVAN != Time.day() &&  Time.local() % 86400 >= startTimeInSecADVAN && mode == advanced && !timer.isEnabled(cycleADVANtimer)) { //advanced mode cycle
         if(curVUSB) { //we have 120VAC power - run cycle
+            if(debugEnable) { terminal.println("startcycleADVAN() called from loop"); terminal.flush();}
             previousDayADVAN = Time.day();
             counterADVAN = 0; // in case mode gets changed
             startcycleADVAN();
-            if(debugEnable) { terminal.println("startcycleADVAN() called from loop"); terminal.flush();}
         }
         else{
             previousDayADVAN = Time.day();
@@ -319,6 +337,7 @@ void powerRegain() { //this also runs 1 time on reboot -- need some version of t
     timer.deleteTimer(cycleADVANtimer);
     cycleADVANtimer = timerNA;
     R1.setAddress(1, 1, 1); //restart comunication with relay board
+    #ifdef Argon //the I2C relay board on Argon shuts off at powerFail so it doesn't work to shut running zones off from powerFail() for argon
         for (int i = 0; i < numZones; i++) {
             if(zoneStatus[i]){//if selected zone is on
                 R1.turnOffRelay(i+1);
@@ -326,6 +345,7 @@ void powerRegain() { //this also runs 1 time on reboot -- need some version of t
                 updateBlynkTable(i, 0);
             }
         }
+    #endif
     if (debugEnable) {
         if(R1.initialized){ terminal.println("Power Restored - Relay is ready"); terminal.flush(); }
         else{ terminal.println("Relay not ready"); terminal.flush(); }
@@ -334,7 +354,15 @@ void powerRegain() { //this also runs 1 time on reboot -- need some version of t
 void powerFail() { //what should happen when VUSB goes dead
     if (debugEnable) {terminal.println("powerFail()"); terminal.flush();}
     Blynk.notify("Power Outage!");
-    /// this doesn't work: R1.turnOffRelay(1);
+    #ifdef Boron //the I2C relay board on boron stays on through power fail
+        for (int i = 0; i < numZones; i++) {
+            if(zoneStatus[i]){//if selected zone is on
+                R1.turnOffRelay(i+1);
+                Blynk.virtualWrite(V21+i, LOW);
+                updateBlynkTable(i, 0);
+            }
+        }
+    #endif
 }
 
 void startcycleADVAN() {
@@ -470,17 +498,36 @@ bool hasVUSB() { //checks if power supplied at USB this runs in loop() - bool cu
     return (*pReg & 1) != 0;
 }
 void signalStrength() {
-    int test = WiFi.RSSI().getStrength();
+    //int test = WiFi.RSSI().getStrength();
     //terminal.print(Time.format("%r - ")); terminal.print(test); terminal.flush();
     #if PLATFORM_ARGON  //why doesn't Wiring_WiFi work here
-        int wifi = WiFi.RSSI().getStrength();
-        RSSI = wifi;
-        if(debugEnable) {terminal.print(wifi); terminal.println("% WiFi Strength"); terminal.flush(); }
+        //int wifi = WiFi.RSSI().getStrength();
+        //RSSI = wifi;
+        //if(debugEnable) {terminal.print(wifi); terminal.println("% WiFi Strength"); terminal.flush(); }
     #endif
     #if Wiring_Cellular
         CellularSignal sig = Cellular.RSSI();  //does this work??
-        RSSI = 999; //RSSI = sig; this isn't working
-        if(debugEnable) {terminal.print(sig); terminal.println("% Cell Strength"); terminal.flush(); }
+        float strength = sig.getStrength();
+        RSSI = strength; //RSSI = sig; this isn't working
+        if(debugEnable) {terminal.print(strength); terminal.println("% Cell Strength"); terminal.flush(); }
         //Log.info("Cellular signal strength: %.02f%%", sig.getStrength());
     #endif
+}
+int switchdb2b(String command) {
+    if(command == "1") {
+        debugEnable = 1;
+        return 1;
+    }
+    else if (command == "0") {
+        debugEnable = 0;
+        return 0;
+    }
+    else return -1;
+} 
+int refreshTable(String command) {
+    if(command == "1") {
+        refreshBlynkTable();
+        return 1;
+    }
+    else return -1;
 }
