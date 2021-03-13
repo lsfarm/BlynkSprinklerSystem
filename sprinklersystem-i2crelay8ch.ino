@@ -13,8 +13,8 @@ V8   - Power Supply LED runs in loop() in hasVUSB()
 V7   - Auto zone finish time (Value Display)
 V9   - (Table Widget) - used for showing value start and stop times
 V10  - (Terminal)
-V11  - (Time Input Widget) for advanced mode start time \
-V12  - Advanced mode zone run time (Numeric Input)      /
+V11  - (Time Input Widget) for advanced mode start time         \
+V12  - [Master]Advanced mode zone run time (Numeric Input)      /
 V15  - Signal Strength
 V21  - Manual Valve switch input (Styled Button)
 |||  - reserved
@@ -23,6 +23,7 @@ V101 - (Segment Switch) for advanced mode Case 0=Off - 1=EveryDay - 2=Everyother
 |||  - reserved
 V125 - 101-125 reserved for inputs
 V150 - (Numeric Input Widget) V150 sets how long Zone1 runs for in Advanced Mode <<is there a better widget for this?
+|||
 V175 - 150-175 reserved for inputs
 https://github.com/ControlEverythingCom/NCD16Relay/blob/master/firmware/NCD16Relay.cpp
 >> https://github.com/ControlEverythingCom/NCD16Relay/blob/master/README.md
@@ -36,7 +37,6 @@ relayController.toggleRelay(i);
 -- auto mode contuines even when switched back to manual mode <<bandaid for now is to clear remaning loop from running  >>would like to add clearTimeout()
 -- switching modes on V0 doesn't get reflected on BlynkTable times -- it will change icon tho. << fixed>debugging
 */
-//#define Boron
 /**** Particle *******************************************************************************************************************/
 int switchdb2b(String command); //particle function
 int refreshTable(String command);
@@ -85,7 +85,7 @@ int     previousDayADVAN = 0;
 int     count = 1;
 int     secoundcount;
 int             counterADVAN;
-int             advanSched[numZones] [2]; //advanced schedule this holds values from V101 - (V101+numZones) in column [0] and keeps track of the scedule in column [1]  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
+int             advanSched[numZones] [2]; //advanced schedule this holds values from V101 - (V101+numZones) in column [0] and keeps track of the schedule in column [1]  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
 unsigned long   runTimeADVAN[numZones]; //to do  plan to tie this to V150-175 for setting run times in advanced mode
 bool            zoneStatus[numZones]; //this runs in updateBlynkTable() and is than use to correctly set zone turn off times when mode is changed in setMode() 
 unsigned long   startTime[numZones];
@@ -269,6 +269,8 @@ BLYNK_WRITE(V109) { switch (advanSched[8][0] = param.asInt() - 1) {} advanSched[
 BLYNK_WRITE(V110) { switch (advanSched[9][0] = param.asInt() - 1) {} advanSched[9][1] = advanSched[9][0];}
 BLYNK_WRITE(V111) { switch (advanSched[10][0] = param.asInt() - 1) {} advanSched[10][1] = advanSched[10][0];}
 BLYNK_WRITE(V112) { switch (advanSched[11][0] = param.asInt() - 1) {} advanSched[11][1] = advanSched[11][0];}
+
+BLYNK_WRITE(V113) { switch (advanSched[12][0] = param.asInt() - 1) {} advanSched[12][1] = advanSched[12][0];} //will this work V113 will write to unknown data location if set on 12 zones
 
 void setup() { //wished could delay loop() if zone on time is in the past on restart 1st zone turns on right away, but doesn't get recorded in table until its turned off
     //Time.zone(-6); in blynk sync virtual V1
@@ -610,7 +612,7 @@ void setZone() {
 		Time.zone(offset);
 		Blynk.virtualWrite(V1, offset);
 	} else{
-		int offset = (previousSunday <= 0)? -7 : -8;
+		int offset = (previousSunday <= 0)? -5 : -6;
 		Time.zone(offset);
 		Blynk.virtualWrite(V1, offset);
 	}
