@@ -15,16 +15,18 @@ V9   - (Table Widget) - used for showing value start and stop times
 V10  - (Terminal)
 V11  - (Time Input Widget) for advanced mode start time         \
 V12  - [Master]Advanced mode zone run time (Numeric Input)      /
+V13  - Slider seasonal adjust
 V15  - Signal Strength
 V21  - Manual Valve switch input (Styled Button)
 |||  - reserved
 V45  - 21-45 reserved for inputs (Styled Button)
+V51  - (Numeric Input Widget) V50 sets how long Zone1 runs for in Advanced Mode <<is there a better widget for this?
+|||
+V75  - 50-75 reserved for inputs
 V101 - (Segment Switch) for advanced mode Case 0=Off - 1=EveryDay - 2=Everyother - 3=Every 3rd Day
 |||  - reserved
 V125 - 101-125 reserved for inputs
-V150 - (Numeric Input Widget) V150 sets how long Zone1 runs for in Advanced Mode <<is there a better widget for this?
-|||
-V175 - 150-175 reserved for inputs
+V127?? limit
 https://github.com/ControlEverythingCom/NCD16Relay/blob/master/firmware/NCD16Relay.cpp
 >> https://github.com/ControlEverythingCom/NCD16Relay/blob/master/README.md
 relayController.turnOffAllRelays();  !!this doesn't work at all!! if you do this than next time turnOnRelay(relayNumber); comes around it will turn on entire set
@@ -70,7 +72,7 @@ bool masterValveState;
 /* User Adjusted *****************************************************************************************************************/
 bool debugEnable = 1;
 bool sendTOblynk = 1;  //this sends v21-numZones button status to blynk in auto mode
-const int numZones = 12; // need const for advanSched[]
+const int numZones = 15; // need const for advanSched[]
 /* Program Variables ************************************************************************************************************/
 int     SIG_STR;
 int     SIG_QUA;
@@ -78,18 +80,18 @@ long    startTimeInSec;
 long    zoneRunTime;
 long    zoneRunTimeAsSec;
 long    startTimeInSecADVAN;
-long    zoneRunTimeADVAN;
+//long    zoneRunTimeADVAN;  moved to array time in
 int     timeOffset;
 int     previousDay = 0;
 int     previousDayADVAN = 0;
 int     count = 1;
 int     secoundcount;
 int             counterADVAN;
-int             advanSched[numZones] [2]; //advanced schedule this holds values from V101 - (V101+numZones) in column [0] and keeps track of the schedule in column [1]  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
-unsigned long   runTimeADVAN[numZones]; //to do  plan to tie this to V150-175 for setting run times in advanced mode
-bool            zoneStatus[numZones]; //this runs in updateBlynkTable() and is than use to correctly set zone turn off times when mode is changed in setMode() 
-unsigned long   startTime[numZones];
-unsigned long   stopTime[numZones];
+int             advanSched[24] [2]; //advanced schedule this holds values from V101 - (V101+numZones) in column [0] and keeps track of the schedule in column [1]  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
+long   zoneRunTimeADVAN[24]; //to do  plan to tie this to V150-175 for setting run times in advanced mode
+bool            zoneStatus[24]; //this runs in updateBlynkTable() and is than use to correctly set zone turn off times when mode is changed in setMode() 
+unsigned long   startTime[24];
+unsigned long   stopTime[24];
 int  timeUpdateDay      = 0; //used so runOnceADay only runs once a day
 int  runDayCounter      = 0; //incermented in runOnceADay()
 
@@ -242,12 +244,27 @@ BLYNK_WRITE(V11) { //Time Input Widget  Zone Start Time
   if(debugEnable)  { terminal.print("startTimeInSecADVAN: "); terminal.println(startTimeInSecADVAN); terminal.flush(); }
   //finishTimeCal();
 }
-BLYNK_WRITE(V12) {
-    zoneRunTimeADVAN = param[0].asLong();        //as minute
-    zoneRunTimeADVAN = zoneRunTimeADVAN * 60;    //convert minutes to seconds
-    zoneRunTimeADVAN = zoneRunTimeADVAN * 1000;  //converts seconds to millisec
-    if (debugEnable) { terminal.print("zoneRunTimeADVAN: "); terminal.println(zoneRunTimeADVAN); terminal.flush(); }
+BLYNK_WRITE(V12) { //master time in
+    long timeInputAsMin = param[0].asLong();        //as minute
+    long timeInput = timeInputAsMin * 60;    //convert minutes to seconds
+    timeInput = timeInput * 1000;  //converts seconds to millisec
+    //long timeInputed = (long)timeInput;
+    for(byte i = 0; i < numZones; i++) {
+        zoneRunTimeADVAN[i] = timeInput;
+        Blynk.virtualWrite(V51+i, timeInputAsMin); delay(250);
+    }
+    if (debugEnable) { terminal.print("zoneRunTimeADVAN_Master: "); terminal.println(timeInput); terminal.flush(); }
     //finishTimeCal();
+}
+BLYNK_WRITE(V13) {
+    int adjustValue = param.asInt();
+    for(byte i = 0; i < numZones; i++) {
+        zoneRunTimeADVAN[i] = zoneRunTimeADVAN[i] * adjustValue;
+        zoneRunTimeADVAN[i] = zoneRunTimeADVAN[i] / 100;
+        long runTimeAsMin = zoneRunTimeADVAN[i] / 1000;
+        runTimeAsMin = runTimeAsMin / 60;
+        Blynk.virtualWrite(V51+i, runTimeAsMin); delay(250);
+    }
 }
 BLYNK_WRITE(V101) {
     switch (advanSched[0][0] = param.asInt() - 1) {}
@@ -272,11 +289,26 @@ BLYNK_WRITE(V112) { switch (advanSched[11][0] = param.asInt() - 1) {} advanSched
 
 BLYNK_WRITE(V113) { switch (advanSched[12][0] = param.asInt() - 1) {} advanSched[12][1] = advanSched[12][0];} //will this work V113 will write to unknown data location if set on 12 zones
 
+BLYNK_WRITE(V51) {
+    zoneRunTimeADVAN[0] = param[0].asLong();        //as minute
+    zoneRunTimeADVAN[0] = zoneRunTimeADVAN[0] * 60;    //convert minutes to seconds
+    zoneRunTimeADVAN[0] = zoneRunTimeADVAN[0] * 1000;  //converts seconds to millisec
+    if (debugEnable) { terminal.print("zone1RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[0]); terminal.flush(); }
+    //finishTimeCal();
+}
+BLYNK_WRITE(V52) {
+    zoneRunTimeADVAN[1] = param[0].asLong();        //as minute
+    zoneRunTimeADVAN[1] = zoneRunTimeADVAN[1] * 60;    //convert minutes to seconds
+    zoneRunTimeADVAN[1] = zoneRunTimeADVAN[1] * 1000;  //converts seconds to millisec
+    if (debugEnable) { terminal.print("zone2RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[1]); terminal.flush(); }
+    //finishTimeCal();
+}
+
 void setup() { //wished could delay loop() if zone on time is in the past on restart 1st zone turns on right away, but doesn't get recorded in table until its turned off
     //Time.zone(-6); in blynk sync virtual V1
     Blynk.begin(auth);
     Wire.begin(); //for I2C relays
-    Blynk.syncVirtual(V0, V1, V5, V6, V11, V12); // V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
+    Blynk.syncVirtual(V0, V1, V5, V6, V11 /*V12*/); // V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
     pwLED.off(); //preset this to off in case power is off when it boots
     Blynk.virtualWrite(V9, "clr"); //clear the table
     setupdelay = timer.setTimeout(5000L, Blynk_init);
@@ -395,7 +427,7 @@ void startcycleADVAN() {
 }
   
 void stopcycleADVAN() { 
-    cycleADVANtimer = timer.setTimeout(zoneRunTimeADVAN, [] () {
+    cycleADVANtimer = timer.setTimeout(zoneRunTimeADVAN[counterADVAN], [] () {
         cycleADVANtimer = timerNA; //reset timer point to not used
         turnOffRelay(counterADVAN + 1); 
         updateBlynkTable(counterADVAN, 0);
