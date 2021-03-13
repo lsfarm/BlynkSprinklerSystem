@@ -36,14 +36,14 @@ relayController.toggleRelay(i);
 -- auto mode contuines even when switched back to manual mode <<bandaid for now is to clear remaning loop from running  >>would like to add clearTimeout()
 -- switching modes on V0 doesn't get reflected on BlynkTable times -- it will change icon tho. << fixed>debugging
 */
-#define Boron
+//#define Boron
 /**** Particle *******************************************************************************************************************/
 int switchdb2b(String command); //particle function
 int refreshTable(String command);
 /**** Blynk* *********************************************************************************************************************/
 #include <blynk.h>
 //char auth[] = "zh7lIH_MEeMqn_drxNhOhut37IxDcYrk"; //mine
-char auth[] = "4dfa1557587b47229d25eea844b787e3"; //kelly's
+char auth[] = "7GYvygdIZ_1bl_IGZC6WLDPo5hBUkJRc";
 WidgetTerminal terminal(V10);
 BlynkTimer timer;
 enum  MODE { off = 1, manual = 2, automatic = 3, advanced = 4, unknown = 999 }; //https://www.baldengineer.com/state-machine-with-enum-tutorial.html
@@ -58,37 +58,42 @@ int setupdelay          = timerNA;  // delayed timer for some blynk stuff that w
 bool hasVUSB(); 
 bool hadVUSB = false;
 WidgetLED pwLED(V8);
-/* I2C Relay 16 Channel  delete this!!!*********************************************************************************************************/
-//#include <NCD16Relay.h>
-//NCD16Relay R1;
 /* I2C 8 ChannelRelay ************************************************************************************************************/
 #define BOARD_1 0X20  //all up
 #define BOARD_2 0X27  //all down
+#define BOARD_3 0X21  //??
 unsigned char i2c_buffer;
+unsigned char i2c_buffer_1;   // i2c relay variable buffer for #1 relay board
+unsigned char i2c_buffer_2;   // i2c relay variable buffer for #2 relay board
+unsigned char i2c_buffer_3;   // i2c relay variable buffer for #3 relay board
+bool masterValveState;
 /* User Adjusted *****************************************************************************************************************/
 bool debugEnable = 1;
 bool sendTOblynk = 1;  //this sends v21-numZones button status to blynk in auto mode
 const int numZones = 12; // need const for advanSched[]
 /* Program Variables ************************************************************************************************************/
-int RSSI;
-long startTimeInSec;
-long zoneRunTime;
-long zoneRunTimeAsSec;
-long startTimeInSecADVAN;
-long zoneRunTimeADVAN;
-int timeOffset;
-int previousDay = 0;
-int previousDayADVAN = 0;
-int count = 1;
-int secoundcount;
-int counterADVAN;
-int advanSched[numZones] [2]; //advanced schedule this holds values from V101 - (V101+numZones) in column [0] and keeps track of the scedule in column [1]  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
-unsigned long runTimeADVAN[numZones]; //to do  plan to tie this to V150-175 for setting run times in advanced mode
-bool zoneStatus[numZones]; //this runs in updateBlynkTable() and is than use to correctly set zone turn off times when mode is changed in setMode() 
-unsigned long startTime[numZones];
-unsigned long stopTime[numZones];
+int     SIG_STR;
+int     SIG_QUA;
+long    startTimeInSec;
+long    zoneRunTime;
+long    zoneRunTimeAsSec;
+long    startTimeInSecADVAN;
+long    zoneRunTimeADVAN;
+int     timeOffset;
+int     previousDay = 0;
+int     previousDayADVAN = 0;
+int     count = 1;
+int     secoundcount;
+int             counterADVAN;
+int             advanSched[numZones] [2]; //advanced schedule this holds values from V101 - (V101+numZones) in column [0] and keeps track of the scedule in column [1]  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
+unsigned long   runTimeADVAN[numZones]; //to do  plan to tie this to V150-175 for setting run times in advanced mode
+bool            zoneStatus[numZones]; //this runs in updateBlynkTable() and is than use to correctly set zone turn off times when mode is changed in setMode() 
+unsigned long   startTime[numZones];
+unsigned long   stopTime[numZones];
+int  timeUpdateDay      = 0; //used so runOnceADay only runs once a day
+int  runDayCounter      = 0; //incermented in runOnceADay()
 
-BLYNK_WRITE(V1) { //used to adjust for time change  wished I could find a simple way to do this automatically
+BLYNK_WRITE(V1) { //used to adjust for time change  wished I could find a simple way to do this automatically<done V1 used in setZone()
     timeOffset = param[0].asInt();
     Time.zone(timeOffset);
     Blynk.virtualWrite(V2, Time.format("%r %m/%d"));
@@ -98,7 +103,7 @@ BLYNK_WRITE(V3) {  //Push Button that prints current time back to V2
     if (button1) {
         Blynk.virtualWrite(V2, Time.format("%r %m/%d"));
         signalStrength(); //get current stregth
-        Blynk.virtualWrite(V15, RSSI);
+        Blynk.virtualWrite(V15, SIG_STR);
     }
 }
 BLYNK_WRITE(V5) { //Time Input Widget
@@ -184,7 +189,7 @@ void blynkWriteManual(int nr, int value) {
       break;
     case automatic: 
     case advanced:
-      Blynk.virtualWrite(V21+nr, 0);
+      Blynk.virtualWrite(V21+nr, 0);//if zone was on, this shuts it off in Blynk but doesn't shut off relay
       Blynk.notify("In Auto Mode - Selecting Manual Mode will discountinue todays schedule");
       break;
       
@@ -268,6 +273,7 @@ BLYNK_WRITE(V112) { switch (advanSched[11][0] = param.asInt() - 1) {} advanSched
 void setup() { //wished could delay loop() if zone on time is in the past on restart 1st zone turns on right away, but doesn't get recorded in table until its turned off
     //Time.zone(-6); in blynk sync virtual V1
     Blynk.begin(auth);
+    Wire.begin(); //for I2C relays
     Blynk.syncVirtual(V0, V1, V5, V6, V11, V12); // V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
     pwLED.off(); //preset this to off in case power is off when it boots
     Blynk.virtualWrite(V9, "clr"); //clear the table
@@ -301,9 +307,10 @@ void Blynk_init() { //running this in setup causes device to lockup
     setupdelay = timerNA; 
 }
 
-void loop() {  //if (Time.hour() == 3 && Time.day() != timeUpdateDay) runOnceADay();  // update time and daylight savings
+void loop() {  
     Blynk.run();
     timer.run();
+    if (Time.hour() == 3 && Time.day() != timeUpdateDay) runOnceADay();  // update time and daylight savings
     bool curVUSB = hasVUSB(); // for checking power supply status at USB
     if (curVUSB != hadVUSB) { hadVUSB = curVUSB;  if(curVUSB) {pwLED.on(); powerRegain();}   else{pwLED.off(); powerFail();}   } //this neeeds to stay above startcycles()
     if (previousDay != Time.day() &&  Time.local() % 86400 >= startTimeInSec && mode == automatic) { //auto mode cycle
@@ -343,10 +350,10 @@ void powerRegain() { //this also runs 1 time on reboot -- need some version of t
     timer.deleteTimer(cycleADVANtimer);
     cycleADVANtimer = timerNA;
     //is this still needed? R1.setAddress(1, 1, 1); //restart comunication with relay board
-    #ifdef Argon //the I2C relay board on Argon shuts off at powerFail so it doesn't work to shut running zones off from powerFail() for argon
+    #if (PLATFORM_ID == PLATFORM_ARGON) //the I2C relay board on Argon shuts off at powerFail so it doesn't work to shut running zones off from powerFail() for argon
         for (int i = 0; i < numZones; i++) {
             if(zoneStatus[i]){//if selected zone is on
-                R1.turnOffRelay(i+1);
+                turnOffRelay(i+1);
                 Blynk.virtualWrite(V21+i, LOW);
                 updateBlynkTable(i, 0);
             }
@@ -360,7 +367,7 @@ void powerRegain() { //this also runs 1 time on reboot -- need some version of t
 void powerFail() { //what should happen when VUSB goes dead
     if (debugEnable) {terminal.println("powerFail()"); terminal.flush();}
     Blynk.notify("Power Outage!");
-    #ifdef Boron //the I2C relay board on boron stays on through power fail
+    #if (PLATFORM_ID == PLATFORM_BORON) //the I2C relay board on boron stays on through power fail
         for (int i = 0; i < numZones; i++) {
             if(zoneStatus[i]){//if selected zone is on
                 turnOffRelay(i+1);
@@ -503,22 +510,19 @@ bool hasVUSB() { //checks if power supplied at USB this runs in loop() - bool cu
 
     return (*pReg & 1) != 0;
 }
-void signalStrength() {
-    //int test = WiFi.RSSI().getStrength();
-    //terminal.print(Time.format("%r - ")); terminal.print(test); terminal.flush();
-    #if PLATFORM_ARGON  //why doesn't Wiring_WiFi work here
-        //int wifi = WiFi.RSSI().getStrength();
-        //RSSI = wifi;
-        //if(debugEnable) {terminal.print(wifi); terminal.println("% WiFi Strength"); terminal.flush(); }
+
+int signalStrength() {
+    #if Wiring_WiFi
+        SIG_STR = WiFi.RSSI().getStrength();
+        SIG_QUA = WiFi.RSSI().getQuality();
     #endif
     #if Wiring_Cellular
-        CellularSignal sig = Cellular.RSSI();  //does this work??
-        float strength = sig.getStrength();
-        RSSI = strength; //RSSI = sig; this isn't working
-        if(debugEnable) {terminal.print(strength); terminal.println("% Cell Strength"); terminal.flush(); }
-        //Log.info("Cellular signal strength: %.02f%%", sig.getStrength());
+        SIG_STR = Cellular.RSSI().getStrength();
+        SIG_QUA = Cellular.RSSI().getQuality();
     #endif
+    return SIG_STR; //omitting this results in SOS
 }
+
 int switchdb2b(String command) {
     if(command == "1") {
         debugEnable = 1;
@@ -537,19 +541,77 @@ int refreshTable(String command) {
     }
     else return -1;
 }
+
 void turnOnRelay(int relay) {
-    
+    relayONcommand(relay);
+    relayONcommand(numZones+1); masterValveState = 1;
+}
+void relayONcommand(int relay) {   
+    if(debugEnable) Particle.publish("turnOnRelay()", String(relay));
+    if(relay >= 1 && relay <= 8) channel_mode(BOARD_1, relay, 1);
+    else if(relay >= 9 && relay <= 16) channel_mode(BOARD_2, (relay-8), 1);
+    else if(relay >= 17 && relay <= 24) channel_mode(BOARD_3, (relay-16), 1);
+    else if(debugEnable) Particle.publish("error/turnOnRelay()", String(relay));
 }
 void turnOffRelay(int relay) {
-    
+    relayOFFcommand(numZones+1); 
+    if(masterValveState) delay(500);
+    masterValveState = 0;
+    relayOFFcommand(relay);
+}    
+void relayOFFcommand(int relay) {   
+    if(relay >= 1 && relay <= 8) channel_mode(BOARD_1, relay, 0);
+    else if(relay >= 9 && relay <= 16) channel_mode(BOARD_2, (relay-8), 0);
+    else if(relay >= 17 && relay <= 24) channel_mode(BOARD_3, (relay-16), 0);
+    else if(debugEnable) Particle.publish("error/turnOffRelay()", String(relay));    
 }
-void channel_mode(unsigned char addr, unsigned char channel, unsigned char value) {                
-    channel = 8-channel;
+void channel_mode(unsigned char addr, unsigned char channel, unsigned char value) {
+ switch (addr) {   case BOARD_1: i2c_buffer = i2c_buffer_1; break;
+                   case BOARD_2: i2c_buffer = i2c_buffer_2; break;
+                   case BOARD_3: i2c_buffer = i2c_buffer_3; break;  }
+                   //case BOARD_4: i2c_buffer = i2c_buffer_4; break;  }
+                  
 
-    i2c_buffer &= ~(1<<(channel));
-    i2c_buffer |= value<<channel;
+ channel = 8-channel;
+
+ i2c_buffer &= ~(1<<(channel));
+ i2c_buffer |= value<<channel;
+
  
-    Wire.beginTransmission(addr);             
-    Wire.write(~i2c_buffer);               
-    Wire.endTransmission();  
+ switch (addr) {   case BOARD_1: i2c_buffer_1 = i2c_buffer; break;
+                   case BOARD_2: i2c_buffer_2 = i2c_buffer; break;
+                   case BOARD_3: i2c_buffer_3 = i2c_buffer; break;  }
+                   //case BOARD_4: i2c_buffer_4 = i2c_buffer; break;  }
+ 
+
+ Wire.beginTransmission(addr);             
+ Wire.write(~i2c_buffer);               
+ Wire.endTransmission();  
+}
+
+void runOnceADay() {
+    timeUpdateDay = Time.day();
+    runDayCounter++;
+    Particle.syncTime();
+    setZone();
+}
+void setZone() {
+	int month = Time.month();
+	int day = Time.day();
+	int weekday = Time.weekday();
+	int previousSunday = day - weekday + 1;
+
+	if (month < 3 || month > 11) {
+		Time.zone(-6);
+	}else if (month > 3 && month < 11) {
+		Time.zone(-5);
+	}else if (month == 3) {
+		int offset = (previousSunday >= 8)? -5 : -6;
+		Time.zone(offset);
+		Blynk.virtualWrite(V1, offset);
+	} else{
+		int offset = (previousSunday <= 0)? -7 : -8;
+		Time.zone(offset);
+		Blynk.virtualWrite(V1, offset);
+	}
 }
