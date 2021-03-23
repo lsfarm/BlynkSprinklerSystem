@@ -3,7 +3,7 @@
 /////////************* **********/////////
 /*
 V0   - Mode Switch (Segment Switch)
-V1   - Time Offset from UTC used to set correct time on controller (Numeric Input) <<add in auto time mode
+V1   - Time Offset from UTC used to set correct time on controller (Numeric Input) <<add in auto time mode>>autoMode added setZone sends to V1, dont Vsync V1 in setup
 V2   - Time printed back on this channel after adjusted via V1 (Value Display)
 V3   - Push Button that prints current time back to V2
 V4   - Value Widget that gets time valve in blynk_int() for saving last reboot time
@@ -17,6 +17,7 @@ V11  - (Time Input Widget) for advanced mode start time         \
 V12  - [Master]Advanced mode zone run time (Numeric Input)      /
 V13  - Slider seasonal adjust
 V15  - Signal Strength
+V16  - refreshBlynkTable();
 V21  - Manual Valve switch input (Styled Button)
 |||  - reserved
 V45  - 21-45 reserved for inputs (Styled Button)
@@ -33,17 +34,27 @@ V127?? limit
 -- switching modes on V0 doesn't get reflected on BlynkTable times -- it will change icon tho. << fixed>debugging
 */
 /* User Adjusted *****************************************************************************************************************/
+#define LB WellHouse //Quinns //location of device
 bool    debugEnable     = 1;
 bool    sendTOblynk     = 1;  //this sends v21-numZones button status to blynk in auto mode
-const int numZones      = 10; // need const for advanSched[]
-bool    masterValve    = 0;  //this turns on numZones + 1 relay .. so for 5 zone setup, relay 6 will be Master
+//const int numZones      = 10; // need const for advanSched[]
+//bool    masterValve    = 0;  //this turns on numZones + 1 relay .. so for 5 zone setup, relay 6 will be Master
+#ifdef Quinns
+char auth[] = "V9fruidaVkN2qEB_y7M3Wd_oAC6iprCO";
+const int   numZones    = 16;
+bool        masterValve = 0;
+#endif
+#ifdef LB WellHouse
+char auth[] = "7GYvygdIZ_1bl_IGZC6WLDPo5hBUkJRc";
+const int   numZones    = 9;
+bool        masterValve = 0;
+#endif
 /**** Particle *******************************************************************************************************************/
 int switchdb2b(String command); //particle function
 int refreshTable(String command);
 /**** Blynk* *********************************************************************************************************************/
 #include <blynk.h>
-//char auth[] = "zh7lIH_MEeMqn_drxNhOhut37IxDcYrk"; //mine
-char auth[] = "7GYvygdIZ_1bl_IGZC6WLDPo5hBUkJRc";
+//char auth[] = "7GYvygdIZ_1bl_IGZC6WLDPo5hBUkJRc";
 WidgetTerminal terminal(V10);
 BlynkTimer timer;
 enum  MODE { off = 1, manual = 2, automatic = 3, advanced = 4, unknown = 999 }; //https://www.baldengineer.com/state-machine-with-enum-tutorial.html
@@ -89,6 +100,12 @@ unsigned long   stopTime[24];
 int  timeUpdateDay      = 0; //used so runOnceADay only runs once a day
 int  runDayCounter      = 0; //incermented in runOnceADay()
 
+BLYNK_WRITE(V16) {  //Push Button that refreshs table
+    int buttonref = param.asInt();
+    if (buttonref) {
+        refreshBlynkTable();
+    }
+}
 BLYNK_WRITE(V1) { //used to adjust for time change  wished I could find a simple way to do this automatically<done V1 used in setZone()
     timeOffset = param[0].asInt();
     Time.zone(timeOffset);
@@ -316,15 +333,16 @@ BLYNK_WRITE(V65) { zoneRunTimeADVAN[14] = param[0].asLong();  zoneRunTimeADVAN[1
 BLYNK_WRITE(V66) { zoneRunTimeADVAN[15] = param[0].asLong();  zoneRunTimeADVAN[15] = zoneRunTimeADVAN[15] * 60;  zoneRunTimeADVAN[15] = zoneRunTimeADVAN[15] * 1000; if (debugEnable) { terminal.print("zone16RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[15]); terminal.flush(); } }
 
 void setup() { //wished could delay loop() if zone on time is in the past on restart 1st zone turns on right away, but doesn't get recorded in table until its turned off
+     
     Particle.function("Debug2Blynk", switchdb2b);
     Particle.function("RefreshTable", refreshTable);
     Particle.variable("Debug2Blynk", debugEnable);
     Particle.variable("Mode", mode); //this isn't working
     
     Wire.begin(); //for I2C relays
-
     Blynk.begin(auth);
-    Blynk.syncVirtual(V0, V1, V5, V6, V11 /*V12*/); // Dont sync master time V12.. sync Zone times V51-numZones
+    setZone();
+    Blynk.syncVirtual(V0, /*V1-autoCompleted*/ V5, V6, V11 /*V12*/); // Dont sync master time V12.. sync Zone times V51-numZones
     pwLED.off(); //preset this to off in case power is off when it boots
     Blynk.virtualWrite(V9, "clr"); //clear the table
     for(byte i = 0; i<numZones; i++) {
@@ -425,6 +443,7 @@ void startcycleADVAN() {
     if(debugEnable) { terminal.print(Time.format("%D %r - ")); terminal.print("co#: "); terminal.println(counterADVAN); }
     if (advanSched[counterADVAN][1] == 1) { //if selected zone needs to run today
         turnOnRelay(counterADVAN + 1);     //turn  zone on
+        if(sendTOblynk) {Blynk.virtualWrite(V21+counterADVAN, HIGH);}
         updateBlynkTable(counterADVAN, 1);    //update Blynk table
         stopcycleADVAN();                     //wait zoneRunTime than shut it off
         if(debugEnable) { terminal.print("ADVANCYCLE Zone #"); terminal.print(counterADVAN + 1); terminal.println(" Running"); terminal.flush(); }
@@ -438,7 +457,8 @@ void startcycleADVAN() {
 void stopcycleADVAN() { 
     cycleADVANtimer = timer.setTimeout(zoneRunTimeADVAN[counterADVAN], [] () {
         cycleADVANtimer = timerNA; //reset timer point to not used
-        turnOffRelay(counterADVAN + 1); 
+        turnOffRelay(counterADVAN + 1);
+        if(sendTOblynk) {Blynk.virtualWrite(V21+counterADVAN, LOW);}
         updateBlynkTable(counterADVAN, 0);
         updateAdvanSchedArray();
     } );
@@ -649,12 +669,15 @@ void setZone() {
 	}else if (month > 3 && month < 11) {
 		Time.zone(-5);
 	}else if (month == 3) {
-		int offset = (previousSunday >= 8)? -5 : -6;
-		Time.zone(offset);
-		Blynk.virtualWrite(V1, offset);
+		//int offset = (previousSunday >= 8)? -5 : -6;
+		timeOffset = (previousSunday >= 8)? -5 : -6;
+		Time.zone(timeOffset);
+		Blynk.virtualWrite(V1, timeOffset);
 	} else{
-		int offset = (previousSunday <= 0)? -5 : -6;
-		Time.zone(offset);
-		Blynk.virtualWrite(V1, offset);
+		//int offset = (previousSunday <= 0)? -5 : -6;
+		timeOffset = (previousSunday >= 0)? -5 : -6;
+		Time.zone(timeOffset);
+		Blynk.virtualWrite(V1, timeOffset);
 	}
+	terminal.println(previousSunday); terminal.flush();
 }
