@@ -27,16 +27,9 @@ V101 - (Segment Switch) for advanced mode Case 0=Off - 1=EveryDay - 2=Everyother
 |||  - reserved
 V125 - 101-125 reserved for inputs
 V127?? limit
-https://github.com/ControlEverythingCom/NCD16Relay/blob/master/firmware/NCD16Relay.cpp
->> https://github.com/ControlEverythingCom/NCD16Relay/blob/master/README.md
-relayController.turnOffAllRelays();  !!this doesn't work at all!! if you do this than next time turnOnRelay(relayNumber); comes around it will turn on entire set
-relayController.turnOnRelay(relayNumber);
-relayController.toggleRelay(i);
-      terminal.println(Time.local() % 86400); //this gives time of day in secounds
-      terminal.println(Time.day());           //this gives day of month
-      
+
 !!Issues!!
--- auto mode contuines even when switched back to manual mode <<bandaid for now is to clear remaning loop from running  >>would like to add clearTimeout()
+-- done -- auto mode contuines even when switched back to manual mode <<bandaid for now is to clear remaning loop from running  >>would like to add clearTimeout()
 -- switching modes on V0 doesn't get reflected on BlynkTable times -- it will change icon tho. << fixed>debugging
 */
 /* User Adjusted *****************************************************************************************************************/
@@ -190,7 +183,7 @@ void blynkWriteManual(int nr, int value) {
         }
         else { 
             char msg[20];
-            sprintf_P(msg, PSTR("Only %d Zones! [%d]"), numZones, nr);
+            sprintf_P(msg, PSTR("Only %d Zones! [%d]"), numZones, nr+1);
             Blynk.notify(msg);
         }
       break;
@@ -305,15 +298,22 @@ BLYNK_WRITE(V51) {
     zoneRunTimeADVAN[0] = zoneRunTimeADVAN[0] * 60;    //convert minutes to seconds
     zoneRunTimeADVAN[0] = zoneRunTimeADVAN[0] * 1000;  //converts seconds to millisec
     if (debugEnable) { terminal.print("zone1RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[0]); terminal.flush(); }
-    //finishTimeCal();
 }
-BLYNK_WRITE(V52) {
-    zoneRunTimeADVAN[1] = param[0].asLong();        //as minute
-    zoneRunTimeADVAN[1] = zoneRunTimeADVAN[1] * 60;    //convert minutes to seconds
-    zoneRunTimeADVAN[1] = zoneRunTimeADVAN[1] * 1000;  //converts seconds to millisec
-    if (debugEnable) { terminal.print("zone2RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[1]); terminal.flush(); }
-    //finishTimeCal();
-}
+BLYNK_WRITE(V52) { zoneRunTimeADVAN[1] = param[0].asLong();  zoneRunTimeADVAN[1] = zoneRunTimeADVAN[1] * 60;  zoneRunTimeADVAN[1] = zoneRunTimeADVAN[1] * 1000; if (debugEnable) { terminal.print("zone2RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[1]); terminal.flush(); } }
+BLYNK_WRITE(V53) { zoneRunTimeADVAN[2] = param[0].asLong();  zoneRunTimeADVAN[2] = zoneRunTimeADVAN[2] * 60;  zoneRunTimeADVAN[2] = zoneRunTimeADVAN[2] * 1000; if (debugEnable) { terminal.print("zone3RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[2]); terminal.flush(); } }
+BLYNK_WRITE(V54) { zoneRunTimeADVAN[3] = param[0].asLong();  zoneRunTimeADVAN[3] = zoneRunTimeADVAN[3] * 60;  zoneRunTimeADVAN[3] = zoneRunTimeADVAN[3] * 1000; if (debugEnable) { terminal.print("zone4RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[3]); terminal.flush(); } }
+BLYNK_WRITE(V55) { zoneRunTimeADVAN[4] = param[0].asLong();  zoneRunTimeADVAN[4] = zoneRunTimeADVAN[4] * 60;  zoneRunTimeADVAN[4] = zoneRunTimeADVAN[4] * 1000; if (debugEnable) { terminal.print("zone5RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[4]); terminal.flush(); } }
+BLYNK_WRITE(V56) { zoneRunTimeADVAN[5] = param[0].asLong();  zoneRunTimeADVAN[5] = zoneRunTimeADVAN[5] * 60;  zoneRunTimeADVAN[5] = zoneRunTimeADVAN[5] * 1000; if (debugEnable) { terminal.print("zone6RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[5]); terminal.flush(); } }
+BLYNK_WRITE(V57) { zoneRunTimeADVAN[6] = param[0].asLong();  zoneRunTimeADVAN[6] = zoneRunTimeADVAN[6] * 60;  zoneRunTimeADVAN[6] = zoneRunTimeADVAN[6] * 1000; if (debugEnable) { terminal.print("zone7RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[6]); terminal.flush(); } }
+BLYNK_WRITE(V58) { zoneRunTimeADVAN[7] = param[0].asLong();  zoneRunTimeADVAN[7] = zoneRunTimeADVAN[7] * 60;  zoneRunTimeADVAN[7] = zoneRunTimeADVAN[7] * 1000; if (debugEnable) { terminal.print("zone8RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[7]); terminal.flush(); } }
+BLYNK_WRITE(V59) { zoneRunTimeADVAN[8] = param[0].asLong();  zoneRunTimeADVAN[8] = zoneRunTimeADVAN[8] * 60;  zoneRunTimeADVAN[8] = zoneRunTimeADVAN[8] * 1000; if (debugEnable) { terminal.print("zone9RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[8]); terminal.flush(); } }
+BLYNK_WRITE(V60) { zoneRunTimeADVAN[9] = param[0].asLong();  zoneRunTimeADVAN[9] = zoneRunTimeADVAN[9] * 60;  zoneRunTimeADVAN[9] = zoneRunTimeADVAN[9] * 1000; if (debugEnable) { terminal.print("zone10RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[9]); terminal.flush(); } }
+BLYNK_WRITE(V61) { zoneRunTimeADVAN[10] = param[0].asLong();  zoneRunTimeADVAN[10] = zoneRunTimeADVAN[10] * 60;  zoneRunTimeADVAN[10] = zoneRunTimeADVAN[10] * 1000; if (debugEnable) { terminal.print("zone11RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[10]); terminal.flush(); } }
+BLYNK_WRITE(V62) { zoneRunTimeADVAN[11] = param[0].asLong();  zoneRunTimeADVAN[11] = zoneRunTimeADVAN[11] * 60;  zoneRunTimeADVAN[11] = zoneRunTimeADVAN[11] * 1000; if (debugEnable) { terminal.print("zone12RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[11]); terminal.flush(); } }
+BLYNK_WRITE(V63) { zoneRunTimeADVAN[12] = param[0].asLong();  zoneRunTimeADVAN[12] = zoneRunTimeADVAN[12] * 60;  zoneRunTimeADVAN[12] = zoneRunTimeADVAN[12] * 1000; if (debugEnable) { terminal.print("zone13RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[12]); terminal.flush(); } }
+BLYNK_WRITE(V64) { zoneRunTimeADVAN[13] = param[0].asLong();  zoneRunTimeADVAN[13] = zoneRunTimeADVAN[13] * 60;  zoneRunTimeADVAN[13] = zoneRunTimeADVAN[13] * 1000; if (debugEnable) { terminal.print("zone14RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[13]); terminal.flush(); } }
+BLYNK_WRITE(V65) { zoneRunTimeADVAN[14] = param[0].asLong();  zoneRunTimeADVAN[14] = zoneRunTimeADVAN[14] * 60;  zoneRunTimeADVAN[14] = zoneRunTimeADVAN[14] * 1000; if (debugEnable) { terminal.print("zone15RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[14]); terminal.flush(); } }
+BLYNK_WRITE(V66) { zoneRunTimeADVAN[15] = param[0].asLong();  zoneRunTimeADVAN[15] = zoneRunTimeADVAN[15] * 60;  zoneRunTimeADVAN[15] = zoneRunTimeADVAN[15] * 1000; if (debugEnable) { terminal.print("zone16RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[15]); terminal.flush(); } }
 
 void setup() { //wished could delay loop() if zone on time is in the past on restart 1st zone turns on right away, but doesn't get recorded in table until its turned off
     Particle.function("Debug2Blynk", switchdb2b);
@@ -324,11 +324,12 @@ void setup() { //wished could delay loop() if zone on time is in the past on res
     Wire.begin(); //for I2C relays
 
     Blynk.begin(auth);
-    Blynk.syncVirtual(V0, V1, V5, V6, V11 /*V12*/); // V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
+    Blynk.syncVirtual(V0, V1, V5, V6, V11 /*V12*/); // Dont sync master time V12.. sync Zone times V51-numZones
     pwLED.off(); //preset this to off in case power is off when it boots
     Blynk.virtualWrite(V9, "clr"); //clear the table
     for(byte i = 0; i<numZones; i++) {
         Blynk.syncVirtual(V101+i);
+        Blynk.syncVirtual(V51+i);
         //delay(500);
     }
     setupdelay = timer.setTimeout(10000L, Blynk_init);
@@ -396,15 +397,13 @@ void powerRegain() { //this also runs 1 time on reboot -- need some version of t
     timer.deleteTimer(cycleADVANtimer);
     cycleADVANtimer = timerNA;
     //is this still needed? R1.setAddress(1, 1, 1); //restart comunication with relay board
-    #if (PLATFORM_ID == PLATFORM_ARGON) //the I2C relay board on Argon shuts off at powerFail so it doesn't work to shut running zones off from powerFail() for argon
-        for (int i = 0; i < numZones; i++) {
-            if(zoneStatus[i]){//if selected zone is on
-                turnOffRelay(i+1);
-                Blynk.virtualWrite(V21+i, LOW);
-                updateBlynkTable(i, 0);
-            }
+    for (int i = 0; i < numZones; i++) {
+        turnOffRelay(i+1); delay (50);
+        if(zoneStatus[i]){//if selected zone is on
+            Blynk.virtualWrite(V21+i, LOW);
+            updateBlynkTable(i, 0);
         }
-    #endif
+    }
     if (debugEnable) {
         //if(R1.initialized){ terminal.println("Power Restored - Relay is ready"); terminal.flush(); }
         //else{ terminal.println("Relay not ready"); terminal.flush(); }
@@ -413,15 +412,13 @@ void powerRegain() { //this also runs 1 time on reboot -- need some version of t
 void powerFail() { //what should happen when VUSB goes dead
     if (debugEnable) {terminal.println("powerFail()"); terminal.flush();}
     Blynk.notify("Power Outage!");
-    #if (PLATFORM_ID == PLATFORM_BORON) //the I2C relay board on boron stays on through power fail
-        for (int i = 0; i < numZones; i++) {
-            if(zoneStatus[i]){//if selected zone is on
-                turnOffRelay(i+1);
-                Blynk.virtualWrite(V21+i, LOW);
-                updateBlynkTable(i, 0);
-            }
+    for (int i = 0; i < numZones; i++) {
+        turnOffRelay(i+1); delay (50);
+        if(zoneStatus[i]){//if selected zone is on
+            Blynk.virtualWrite(V21+i, LOW);
+            updateBlynkTable(i, 0);
         }
-    #endif
+    }
 }
 
 void startcycleADVAN() {
