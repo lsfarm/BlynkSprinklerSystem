@@ -39,6 +39,11 @@ relayController.toggleRelay(i);
 -- auto mode contuines even when switched back to manual mode <<bandaid for now is to clear remaning loop from running  >>would like to add clearTimeout()
 -- switching modes on V0 doesn't get reflected on BlynkTable times -- it will change icon tho. << fixed>debugging
 */
+/* User Adjusted *****************************************************************************************************************/
+bool    debugEnable     = 1;
+bool    sendTOblynk     = 1;  //this sends v21-numZones button status to blynk in auto mode
+const int numZones      = 10; // need const for advanSched[]
+bool    masterValve    = 0;  //this turns on numZones + 1 relay .. so for 5 zone setup, relay 6 will be Master
 /**** Particle *******************************************************************************************************************/
 int switchdb2b(String command); //particle function
 int refreshTable(String command);
@@ -63,16 +68,12 @@ WidgetLED pwLED(V8);
 /* I2C 8 ChannelRelay ************************************************************************************************************/
 #define BOARD_1 0X20  //all up
 #define BOARD_2 0X27  //all down
-#define BOARD_3 0X21  //??
+#define BOARD_3 0X25  //middle pin up - sides down
 unsigned char i2c_buffer;
 unsigned char i2c_buffer_1;   // i2c relay variable buffer for #1 relay board
 unsigned char i2c_buffer_2;   // i2c relay variable buffer for #2 relay board
 unsigned char i2c_buffer_3;   // i2c relay variable buffer for #3 relay board
 bool masterValveState;
-/* User Adjusted *****************************************************************************************************************/
-bool debugEnable = 1;
-bool sendTOblynk = 1;  //this sends v21-numZones button status to blynk in auto mode
-const int numZones = 15; // need const for advanSched[]
 /* Program Variables ************************************************************************************************************/
 int     SIG_STR;
 int     SIG_QUA;
@@ -82,13 +83,13 @@ long    zoneRunTimeAsSec;
 long    startTimeInSecADVAN;
 //long    zoneRunTimeADVAN;  moved to array time in
 int     timeOffset;
-int     previousDay = 0;
-int     previousDayADVAN = 0;
-int     count = 1;
+int     previousDay         = 0;
+int     previousDayADVAN    = 0;
+int     count               = 1;
 int     secoundcount;
 int             counterADVAN;
 int             advanSched[24] [2]; //advanced schedule this holds values from V101 - (V101+numZones) in column [0] and keeps track of the schedule in column [1]  https://www.tutorialspoint.com/arduino/arduino_multi_dimensional_arrays.htm
-long   zoneRunTimeADVAN[24]; //to do  plan to tie this to V150-175 for setting run times in advanced mode
+long    zoneRunTimeADVAN[24]; //to do  plan to tie this to V150-175 for setting run times in advanced mode
 bool            zoneStatus[24]; //this runs in updateBlynkTable() and is than use to correctly set zone turn off times when mode is changed in setMode() 
 unsigned long   startTime[24];
 unsigned long   stopTime[24];
@@ -176,17 +177,21 @@ void blynkWriteManual(int nr, int value) {
       break;
       
     case manual:
-      if(!value) {
-          turnOffRelay(nr+1); 
-          updateBlynkTable(nr, value);
-          //Blynk.virtualWrite(V9, "update", nr, (Time.format("%I:%M%p[%d]")), (Time.format("%I:%M%p[%d]"))); 
-          //Blynk.virtualWrite(V9, F("deselect"), nr);
+        if(!hasVUSB) Blynk.notify("Zone Running But No Power At Controller");    //or hadVUSB???
+        if(nr+1 <= numZones) {
+            if(!value) {
+                turnOffRelay(nr+1); 
+                updateBlynkTable(nr, value);
+            }
+            if(value) { 
+                turnOnRelay(nr+1);
+                updateBlynkTable(nr, value);
+            }
         }
-      if(value) { 
-          turnOnRelay(nr+1);
-          updateBlynkTable(nr, value);
-          //Blynk.virtualWrite(V9, "update", nr, "on", nr+1);  
-          //Blynk.virtualWrite(V9, "select", nr);
+        else { 
+            char msg[20];
+            sprintf_P(msg, PSTR("Only %d Zones! [%d]"), numZones, nr);
+            Blynk.notify(msg);
         }
       break;
     case automatic: 
@@ -235,6 +240,10 @@ BLYNK_WRITE(V29) { blynkWriteManual(8, param.asInt()); }
 BLYNK_WRITE(V30) { blynkWriteManual(9, param.asInt()); }
 BLYNK_WRITE(V31) { blynkWriteManual(10, param.asInt()); }
 BLYNK_WRITE(V32) { blynkWriteManual(11, param.asInt()); }
+BLYNK_WRITE(V33) { blynkWriteManual(12, param.asInt()); }
+BLYNK_WRITE(V34) { blynkWriteManual(13, param.asInt()); }
+BLYNK_WRITE(V35) { blynkWriteManual(14, param.asInt()); }
+BLYNK_WRITE(V36) { blynkWriteManual(15, param.asInt()); }
 
 /////////************* **********/////////
 //             Advanced Mode            //
@@ -286,8 +295,10 @@ BLYNK_WRITE(V109) { switch (advanSched[8][0] = param.asInt() - 1) {} advanSched[
 BLYNK_WRITE(V110) { switch (advanSched[9][0] = param.asInt() - 1) {} advanSched[9][1] = advanSched[9][0];}
 BLYNK_WRITE(V111) { switch (advanSched[10][0] = param.asInt() - 1) {} advanSched[10][1] = advanSched[10][0];}
 BLYNK_WRITE(V112) { switch (advanSched[11][0] = param.asInt() - 1) {} advanSched[11][1] = advanSched[11][0];}
-
-BLYNK_WRITE(V113) { switch (advanSched[12][0] = param.asInt() - 1) {} advanSched[12][1] = advanSched[12][0];} //will this work V113 will write to unknown data location if set on 12 zones
+BLYNK_WRITE(V113) { switch (advanSched[12][0] = param.asInt() - 1) {} advanSched[12][1] = advanSched[12][0];} 
+BLYNK_WRITE(V114) { switch (advanSched[13][0] = param.asInt() - 1) {} advanSched[13][1] = advanSched[13][0];} 
+BLYNK_WRITE(V115) { switch (advanSched[14][0] = param.asInt() - 1) {} advanSched[14][1] = advanSched[14][0];} 
+BLYNK_WRITE(V116) { switch (advanSched[15][0] = param.asInt() - 1) {} advanSched[15][1] = advanSched[15][0];} 
 
 BLYNK_WRITE(V51) {
     zoneRunTimeADVAN[0] = param[0].asLong();        //as minute
@@ -305,31 +316,32 @@ BLYNK_WRITE(V52) {
 }
 
 void setup() { //wished could delay loop() if zone on time is in the past on restart 1st zone turns on right away, but doesn't get recorded in table until its turned off
-    //Time.zone(-6); in blynk sync virtual V1
-    Blynk.begin(auth);
-    Wire.begin(); //for I2C relays
-    Blynk.syncVirtual(V0, V1, V5, V6, V11 /*V12*/); // V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
-    pwLED.off(); //preset this to off in case power is off when it boots
-    Blynk.virtualWrite(V9, "clr"); //clear the table
-    setupdelay = timer.setTimeout(5000L, Blynk_init);
-    Blynk.notify("Battery Failure Controller Has Restarted!");
-    delay(8000); //allow setup to finish before starting loop() because if in advan mode at power cycle all advan cycles will be skipped V101-numZones hasn't synced yet
-    //moved to powerRegain()
-    /*R1.setAddress(1, 1, 1);
-    if(R1.initialized){ terminal.println("Relay is ready"); terminal.flush(); }
-    else{ terminal.println("Relay not ready"); terminal.flush(); }*/
     Particle.function("Debug2Blynk", switchdb2b);
     Particle.function("RefreshTable", refreshTable);
     Particle.variable("Debug2Blynk", debugEnable);
     Particle.variable("Mode", mode); //this isn't working
-}
+    
+    Wire.begin(); //for I2C relays
 
-void Blynk_init() { //running this in setup causes device to lockup
-    Blynk.virtualWrite(V4, Time.format("%r %m/%d")); //last reboot time
+    Blynk.begin(auth);
+    Blynk.syncVirtual(V0, V1, V5, V6, V11 /*V12*/); // V101, V102, V103, V104, V105, V106, V107, V108, V109, V110, V111, V112);
+    pwLED.off(); //preset this to off in case power is off when it boots
+    Blynk.virtualWrite(V9, "clr"); //clear the table
     for(byte i = 0; i<numZones; i++) {
         Blynk.syncVirtual(V101+i);
         //delay(500);
     }
+    setupdelay = timer.setTimeout(10000L, Blynk_init);
+    Blynk.notify("Battery Failure Controller Has Restarted!");
+    //delay(8000); //allow setup to finish before starting loop() because if in advan mode at power cycle all advan cycles will be skipped V101-numZones hasn't synced yet
+}
+
+void Blynk_init() { //running this in setup causes device to lockup
+    Blynk.virtualWrite(V4, Time.format("%r %m/%d")); //last reboot time
+    /*for(byte i = 0; i<numZones; i++) {
+        Blynk.syncVirtual(V101+i);
+        //delay(500);
+    }*/
     for(byte i = 0; i < numZones; i++) {
         char nodeName[9];
         sprintf_P(nodeName, PSTR("Zone %d"), (i+1));
@@ -578,7 +590,7 @@ int refreshTable(String command) {
 
 void turnOnRelay(int relay) {
     relayONcommand(relay);
-    relayONcommand(numZones+1); masterValveState = 1;
+    if(masterValve) { relayONcommand(numZones+1); masterValveState = 1; }
 }
 void relayONcommand(int relay) {   
     if(debugEnable) Particle.publish("turnOnRelay()", String(relay));
@@ -588,8 +600,8 @@ void relayONcommand(int relay) {
     else if(debugEnable) Particle.publish("error/turnOnRelay()", String(relay));
 }
 void turnOffRelay(int relay) {
-    relayOFFcommand(numZones+1); 
-    if(masterValveState) delay(500);
+    if(masterValve) relayOFFcommand(numZones+1); 
+    if(masterValveState) delay(500); //if master valve was on, wait a bit before shutting off zone valve
     masterValveState = 0;
     relayOFFcommand(relay);
 }    
