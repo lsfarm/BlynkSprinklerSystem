@@ -4,7 +4,7 @@
 /*
 V0   - Display
 V1   - signalStrength
-V4   - poewerLED()
+V4   - powerLED()
 V5   - getTime (button)
 V10  - terminal
 V11  - manual button
@@ -51,6 +51,7 @@ int     timeOffset;
 int     previousDay         = 0;
 int  timeUpdateDay      = 0; //used so runOnceADay only runs once a day
 int  runDayCounter      = 0; //incermented in runOnceADay()
+int lastMin; //used in loop to sendInfo2Blynk()
 
 BLYNK_WRITE(V5) {  //Push Button that prints current time back to V0
     int button1 = param.asInt();
@@ -88,12 +89,13 @@ BLYNK_WRITE(V11) { blynkWriteManual(0, param.asInt()); }
 /////////************* **********/////////
 BLYNK_WRITE(V21) {
     zoneStopTime[0] = param[0].asLong();        //as minute
+    //zoneStopTime[0] = zoneStopTime[0] * 60;    //convert hours to minutes this isn't working
     zoneStopTime[0] = zoneStopTime[0] * 60;    //convert minutes to seconds
     zoneStopTime[0] = zoneStopTime[0] * 1000;  //converts seconds to millisec
     if (!timer.isEnabled(zone1Timer)) { timer.deleteTimer(zone1Timer); zone1Timer = timerNA; }
     zone1.on();
-    zone1Timer = timer.setTimeout(zoneStopTime[0], [] () { turnOffRelay(1); zone1.off(); zone1Timer = timerNA;  } );
-    if (debugEnable) { terminal.print("zone1RunTimeADVAN: "); terminal.println(zoneStopTime[0]); terminal.flush(); }
+    zone1Timer = timer.setTimeout(zoneStopTime[0], [] () { turnOffRelay(1); Blynk.virtualWrite(V11, LOW); zone1.off(); zone1Timer = timerNA;  } );
+    if (sendTOblynk) { terminal.print("zone1StopMilliSec: "); terminal.println(zoneStopTime[0]); terminal.flush(); }
 }
 
 /*BLYNK_WRITE(V5) { //Time Input Widget
@@ -157,6 +159,7 @@ void loop() {
     if (Time.hour() == 3 && Time.day() != timeUpdateDay) runOnceADay();  // update time and daylight savings
     bool curVUSB = hasVUSB(); // for checking power supply status at USB
     if (curVUSB != hadVUSB) { hadVUSB = curVUSB;  if(curVUSB) {pwLED.on(); powerRegain();}   else{pwLED.off(); powerFail();}   } //this neeeds to stay above startcycles()
+    if(Time.minute() != lastMin) { lastMin = Time.minute(); sendInfo2Blynk(); }
 
 } //end loop
 
@@ -181,7 +184,11 @@ void powerFail() { //what should happen when VUSB goes dead
         turnOffRelay(i+1); delay (50);
     }
 }
-
+void sendInfo2Blynk() {
+    Blynk.virtualWrite(V0, Time.format("%r %m/%d"));
+    signalStrength(); //get current stregth
+    Blynk.virtualWrite(V1, SIG_STR);
+}
 bool hasVUSB() { //checks if power supplied at USB this runs in loop() - bool curVUSB = hasVUSB(); 
     uint32_t *pReg = (uint32_t *)0x40000438; // USBREGSTATUS
 
@@ -222,6 +229,7 @@ int refreshTable(String command) {
 void turnOnRelay(int relay) {
     relayONcommand(relay);
     zoneStatus[relay-1] = 1;
+    if(sendTOblynk) { terminal.print(Time.format("%r %m/%d: Valve ")); terminal.print(relay); terminal.println(" ON"); terminal.flush(); }
 }
 void relayONcommand(int relay) {   
     if(debugEnable) Particle.publish("turnOnRelay()", String(relay));
@@ -233,6 +241,7 @@ void relayONcommand(int relay) {
 void turnOffRelay(int relay) {
     relayOFFcommand(relay);
     zoneStatus[relay-1] = 1;
+    if(sendTOblynk) { terminal.print(Time.format("%r %m/%d: Valve ")); terminal.print(relay); terminal.println(" OFF"); terminal.flush(); }
 }    
 void relayOFFcommand(int relay) {   
     if(relay >= 1 && relay <= 8) channel_mode(BOARD_1, relay, 0);
@@ -293,12 +302,3 @@ void setZone() {
 	}
 	//terminal.println(previousSunday); terminal.flush();
 }
-
-
-
-
-
-
-
-
-
