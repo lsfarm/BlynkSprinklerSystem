@@ -89,32 +89,16 @@ BLYNK_WRITE(V11) { blynkWriteManual(0, param.asInt()); }
 /////////************* **********/////////
 BLYNK_WRITE(V21) {
     zoneStopTime[0] = param[0].asLong();        //as minute
-    //zoneStopTime[0] = zoneStopTime[0] * 60;    //convert hours to minutes this isn't working
+    //zoneStopTime[0] = zoneStopTime[0] * 60;    //convert hours to minutes this isn't working with decimal hr
     zoneStopTime[0] = zoneStopTime[0] * 60;    //convert minutes to seconds
     zoneStopTime[0] = zoneStopTime[0] * 1000;  //converts seconds to millisec
     if (!timer.isEnabled(zone1Timer)) { timer.deleteTimer(zone1Timer); zone1Timer = timerNA; }
     zone1.on();
     zone1Timer = timer.setTimeout(zoneStopTime[0], [] () { turnOffRelay(1); Blynk.virtualWrite(V11, LOW); zone1.off(); zone1Timer = timerNA;  } );
-    if (sendTOblynk) { terminal.print("zone1StopMilliSec: "); terminal.println(zoneStopTime[0]); terminal.flush(); }
+    if (sendTOblynk) { terminal.print(Time.format("%r-")); terminal.print("zone1StopMilliSec: "); terminal.println(zoneStopTime[0]); terminal.flush(); }
 }
 
-/*BLYNK_WRITE(V5) { //Time Input Widget
-    startTimeInSec = param[0].asLong();
-    if (debugEnable) {
-        terminal.print("startTimeInSec: ");
-        terminal.println(startTimeInSec);
-        terminal.flush();
-    }
-    finishTimeCal();
-}
-BLYNK_WRITE(V6) {
-    zoneRunTime = param[0].asLong();   //as minute
-    zoneRunTime = 60 * zoneRunTime;    //convert minutes to seconds >>take this one out for debuging loops in secounds
-    zoneRunTimeAsSec = zoneRunTime;    //used in finsihTimeCal()
-    zoneRunTime = zoneRunTime * 1000L;  //convert secounds to  milli sec
-    if (debugEnable) { terminal.print("zoneRunTime: "); terminal.println(zoneRunTime); terminal.flush(); }
-    finishTimeCal();
-}
+/*
 void finishTimeCal() {// V7  !!time.zone messes this up!!  terminal.print(Time.format("%D %r - "));
     Time.zone(0);
     long val = zoneRunTimeAsSec * numZones;
@@ -122,22 +106,7 @@ void finishTimeCal() {// V7  !!time.zone messes this up!!  terminal.print(Time.f
     Blynk.virtualWrite(V7, Time.format(finTime, "%r"));
     //terminal.print("finTime: "); //terminal.println(Time.format(finTime)); //terminal.println(Time.format("%D %r - ")); //terminal.flush();
     Time.zone(timeOffset);
-}
-
-
-BLYNK_WRITE(V12) { //master time in
-    long timeInputAsMin = param[0].asLong();        //as minute
-    long timeInput = timeInputAsMin * 60;    //convert minutes to seconds
-    timeInput = timeInput * 1000;  //converts seconds to millisec
-    //long timeInputed = (long)timeInput;
-    for(byte i = 0; i < numZones; i++) {
-        zoneRunTimeADVAN[i] = timeInput;
-        Blynk.virtualWrite(V51+i, timeInputAsMin); delay(250);
-    }
-    if (debugEnable) { terminal.print("zoneRunTimeADVAN_Master: "); terminal.println(timeInput); terminal.flush(); }
-    //finishTimeCal();
-}
-*/
+}*/
 
 void setup() { //wished could delay loop() if zone on time is in the past on restart 1st zone turns on right away, but doesn't get recorded in table until its turned off
      
@@ -185,7 +154,7 @@ void powerFail() { //what should happen when VUSB goes dead
     }
 }
 void sendInfo2Blynk() {
-    Blynk.virtualWrite(V0, Time.format("%r %m/%d"));
+    Blynk.virtualWrite(V0, Time.format("%I:%M %p   %m/%d")); //("%r %m/%d")
     signalStrength(); //get current stregth
     Blynk.virtualWrite(V1, SIG_STR);
 }
