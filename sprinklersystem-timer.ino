@@ -8,8 +8,9 @@ V4   - powerLED()
 V5   - getTime (button)
 V10  - terminal
 V11  - manual button
-v21  - stop time input in min
-V51  - stop timer running widget LED
+V31  - stop timer enable -- autoStopEnabled[8];
+V51  - stop time input in min
+V71  - zone stop time (saved in array)
 /* User Adjusted *****************************************************************************************************************/
 #define Marks //location of device
 bool    debugEnable     = 0;
@@ -26,7 +27,6 @@ WidgetTerminal terminal(V10);
 BlynkTimer timer;
 int timerNA = 99;
 int zone1Timer      = timerNA;
-WidgetLED zone1(V51);
 //int AUTOtimerStartDelay = timerNA;
 //int cycleADVANtimer     = timerNA;
 //int setupdelay          = timerNA;  // delayed timer for some blynk stuff that won't load in setup
@@ -45,8 +45,9 @@ unsigned char i2c_buffer_3;   // i2c relay variable buffer for #3 relay board
 /* Program Variables ************************************************************************************************************/
 int     SIG_STR;
 int     SIG_QUA;
-long    zoneStopTime[8];
+long    zoneStopTime[8] [3]; // [input in sec] [stop Day] [stop secounds??]
 bool    zoneStatus[8];
+bool    autoStopEnabled[8];
 int     timeOffset;
 int     previousDay         = 0;
 int  timeUpdateDay      = 0; //used so runOnceADay only runs once a day
@@ -87,15 +88,25 @@ BLYNK_WRITE(V11) { blynkWriteManual(0, param.asInt()); }
 /////////************* **********/////////
 //                Auto-Stop             //
 /////////************* **********/////////
-BLYNK_WRITE(V21) {
-    zoneStopTime[0] = param[0].asLong();        //as minute
-    //zoneStopTime[0] = zoneStopTime[0] * 60;    //convert hours to minutes this isn't working with decimal hr
-    zoneStopTime[0] = zoneStopTime[0] * 60;    //convert minutes to seconds
-    zoneStopTime[0] = zoneStopTime[0] * 1000;  //converts seconds to millisec
-    if (!timer.isEnabled(zone1Timer)) { timer.deleteTimer(zone1Timer); zone1Timer = timerNA; }
-    zone1.on();
-    zone1Timer = timer.setTimeout(zoneStopTime[0], [] () { turnOffRelay(1); Blynk.virtualWrite(V11, LOW); zone1.off(); zone1Timer = timerNA;  } );
-    if (sendTOblynk) { terminal.print(Time.format("%r-")); terminal.print("zone1StopMilliSec: "); terminal.println(zoneStopTime[0]); terminal.flush(); }
+BLYNK_WRITE(V31) {  //Push Button that prints current time back to V0
+    int val = param.asInt();
+    autoStopEnabled[0] = val;
+    if(val) terminal.println("Zone 1 Stop Timer Running"); 
+    else terminal.println("Zone 1 Stop Timer Disabled"); 
+    terminal.flush();
+}
+BLYNK_WRITE(V51) {
+    float myVar = param[0].asFloat();        //as minute
+    myVar = myVar * 3600; //3600 seconds in one hour
+    zoneStopTime[0][0] = myVar;
+    zoneStopTime[0][1] = zoneStopTime[0][0] + Time.now();
+    Blynk.virtualWrite(V71, Time.format(zoneStopTime[0][1], "%I:%M %p   %m/%d"));
+    if (sendTOblynk) { 
+        terminal.print(Time.format("%r-")); terminal.print("zone1StopSec: "); terminal.println(/*myVar*/zoneStopTime[0][0]); 
+        terminal.print("Time Now: "); terminal.println((int) Time.now());
+        terminal.print("StopTime: "); terminal.println(zoneStopTime[0][1]); 
+        terminal.flush(); 
+    }
 }
 
 /*
@@ -117,7 +128,7 @@ void setup() { //wished could delay loop() if zone on time is in the past on res
     Wire.begin(); //for I2C relays
     Blynk.begin(auth);
     setZone();
-    //Blynk.syncVirtual(V0);
+    Blynk.syncVirtual(V11, V31, V51);
     pwLED.off(); //preset this to off in case power is off when it boots
     Blynk.notify("Battery Failure Controller Has Restarted!");
 }
@@ -128,9 +139,16 @@ void loop() {
     if (Time.hour() == 3 && Time.day() != timeUpdateDay) runOnceADay();  // update time and daylight savings
     bool curVUSB = hasVUSB(); // for checking power supply status at USB
     if (curVUSB != hadVUSB) { hadVUSB = curVUSB;  if(curVUSB) {pwLED.on(); powerRegain();}   else{pwLED.off(); powerFail();}   } //this neeeds to stay above startcycles()
-    if(Time.minute() != lastMin) { lastMin = Time.minute(); sendInfo2Blynk(); }
+    if(Time.minute() != lastMin) { lastMin = Time.minute(); sendInfo2Blynk(); checkStopTimers(); } //runs every minute on the minute change
 
 } //end loop
+
+void checkStopTimers() {
+    if(zoneStatus[0] && autoStopEnabled[0] && Time.now() > zoneStopTime[0][1]) {
+        turnOffRelay(1);
+        Blynk.virtualWrite(V11, LOW); // keep things synced
+    }
+}
 
 void powerRegain() { //this also runs 1 time on reboot -- need some version of turnOff relays that where running when powerFail()
     Blynk.notify("Power Restored");
@@ -209,7 +227,7 @@ void relayONcommand(int relay) {
 }
 void turnOffRelay(int relay) {
     relayOFFcommand(relay);
-    zoneStatus[relay-1] = 1;
+    zoneStatus[relay-1] = 0;
     if(sendTOblynk) { terminal.print(Time.format("%r %m/%d: Valve ")); terminal.print(relay); terminal.println(" OFF"); terminal.flush(); }
 }    
 void relayOFFcommand(int relay) {   
