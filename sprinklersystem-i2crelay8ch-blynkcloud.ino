@@ -102,6 +102,7 @@ bool        masterValve = 0;
 /**** Particle *******************************************************************************************************************/
 int switchdb2b(String command); //particle function
 int refreshTable(String command);
+String particleVarMode     = "NA";
 /**** Blynk* *********************************************************************************************************************/
 #include <blynk.h>
 WidgetTerminal terminal(V10);
@@ -110,6 +111,7 @@ enum  MODE { off = 0, manual = 1, automatic = 2, advanced = 4, unknown = 999 }; 
 MODE         mode        = unknown;
 void         setMode(MODE m);
 int lastminute          = 67;       // used in loop() to do minuteloop()
+int lasthour            = 34;       // used in loop() to do hourloop()
 int timerNA = 99;
 int cycleAUTOtimer      = timerNA;
 int AUTOtimerStartDelay = timerNA;
@@ -131,6 +133,7 @@ bool masterValveState;
 /* Program Variables ************************************************************************************************************/
 int     SIG_STR;
 int     SIG_QUA;
+int     delayDay = 0;
 int     mon;
 int     tues;
 int     wed;
@@ -231,11 +234,12 @@ void blynkWriteManual(int nr, int value) {
     case off:
       //Blynk.virtualWrite(V11, 0);
       Blynk.virtualWrite(V51+nr, 0);
-      Blynk.logEvent("note", "Select Manual or Auto Mode"); //Blynk.notify("Select Manual or Auto Mode");
+      Blynk.virtualWrite(V1, "Select Manual");
+      Blynk.logEvent("info", "Select Manual or Auto Mode"); //Blynk.notify("Select Manual or Auto Mode");
       break;
       
     case manual:
-        if(!hasVUSB) Blynk.notify("Zone Running But No Power At Controller");    //or hadVUSB???
+        if(!hasVUSB) Blynk.logEvent("info", "Zone Running But No Power At Controller");    //or hadVUSB???
         if(nr+1 <= numZones) {
             if(!value) {
                 turnOffRelay(nr+1); 
@@ -249,13 +253,13 @@ void blynkWriteManual(int nr, int value) {
         else { 
             char msg[20];
             sprintf_P(msg, PSTR("Only %d Zones! [%d]"), numZones, nr+1);
-            Blynk.notify(msg);
+            Blynk.logEvent("info", msg);
         }
       break;
     case automatic: 
     case advanced:
       Blynk.virtualWrite(V51+nr, 0);//if zone was on, this shuts it off in Blynk but doesn't shut off relay
-      Blynk.notify("In Auto Mode - Selecting Manual Mode will discountinue todays schedule");
+      Blynk.logEvent("info", "In Auto Mode - Selecting Manual Mode will discountinue todays schedule");
       break;
       
     case unknown:
@@ -306,6 +310,10 @@ BLYNK_WRITE(V66) { blynkWriteManual(15, param.asInt()); }
 /////////************* **********/////////
 //             Advanced Mode            //
 /////////************* **********/////////
+BLYNK_WRITE(V8) { //slider on home tab to delay watering if it rains
+    delayDay = param.asInt();
+    Blynk.virtualWrite(V11, delayDay);
+}
 BLYNK_WRITE(V19) {
     String textIn = param.asStr();
     terminal.println(textIn); terminal.flush();
@@ -385,9 +393,9 @@ BLYNK_WRITE(V25) { //seasonal adjustment slider
 
 BLYNK_WRITE(V30) {
     weekday[0] [activeProgram] = param.asInt();
-    terminal.print("Monday Switch to: "); terminal.println(weekday[0] [activeProgram]); terminal.flush();
+    //terminal.print("Monday Switch to: "); terminal.println(weekday[0] [activeProgram]); terminal.flush();
 }
-BLYNK_WRITE(V31) { weekday[1] [activeProgram] = param.asInt(); terminal.print("Tuesday Switch to: "); terminal.println(weekday[1] [activeProgram]); terminal.flush(); }
+BLYNK_WRITE(V31) { weekday[1] [activeProgram] = param.asInt(); } //terminal.print("Tuesday Switch to: "); terminal.println(weekday[1] [activeProgram]); terminal.flush(); }
 BLYNK_WRITE(V32) { weekday[2] [activeProgram] = param.asInt(); }
 BLYNK_WRITE(V33) { weekday[3] [activeProgram] = param.asInt(); }
 BLYNK_WRITE(V34) { weekday[4] [activeProgram] = param.asInt(); }
@@ -400,10 +408,9 @@ void updateActual(int zone) { // print new time off to app than store updated ru
     adjustedZoneTime[zone] [activeProgram] = adjustedZoneTime[zone] [activeProgram] * 1000;  //converts seconds to millisec
 }
 
-BLYNK_WRITE(V75) { //151
+BLYNK_WRITE(V75) { 
     autoZoneTime[1] [activeProgram] = param[0].asLong();        //as minute
     updateActual(1);
-    //Blynk.virtualWrite(V101, autoZoneTime[1] [activeProgram]);
     autoZoneTime[1] [activeProgram] = autoZoneTime[1] [activeProgram] * 60;    //convert minutes to seconds
     autoZoneTime[1] [activeProgram] = autoZoneTime[1] [activeProgram] * 1000;  //converts seconds to millisec
     if (debugEnable) { terminal.print("zone1RunTimeADVAN: "); terminal.println(autoZoneTime[1] [activeProgram]); terminal.flush(); }
@@ -501,8 +508,9 @@ void setup() { //wished could delay loop() if zone on time is in the past on res
      
     Particle.function("Debug2Blynk", switchdb2b);
     Particle.function("RefreshTable", refreshTable);
+    Particle.variable("RunDayCounter", runDayCounter);
     Particle.variable("Debug2Blynk", debugEnable);
-    Particle.variable("Mode", mode); //this isn't working
+    Particle.variable("Mode", particleVarMode);
     
     Wire.begin(); //for I2C relays
     Blynk.begin(auth);
@@ -521,12 +529,13 @@ void setup() { //wished could delay loop() if zone on time is in the past on res
             //delay(500);
     }
     setupdelay = timer.setTimeout(10000L, Blynk_init);
-    Blynk.notify("Battery Failure Controller Has Restarted! !!Reenter Auto Setup Info!!");
+    //Blynk.notify("Battery Failure Controller Has Restarted! !!Reenter Auto Setup Info!!");
     //delay(8000); //allow setup to finish before starting loop() because if in advan mode at power cycle all advan cycles will be skipped V101-numZones hasn't synced yet
 }
 
 void Blynk_init() { //running this in setup causes device to lockup
     setupdelay = timerNA; // Blynk_init() called from setup by this timer
+    Blynk.logEvent("power_failure", "Battery backup power failure - !!Reenter Auto Setup Info!!");
     Blynk.virtualWrite(V9, Time.format("%r %m/%d")); //last reboot time
     //Blynk.sync(V25,V26);
     Blynk.virtualWrite(V25, 100); //presetslider to 100 so it doesn't get off
@@ -544,10 +553,11 @@ void Blynk_init() { //running this in setup causes device to lockup
 void loop() {  
     Blynk.run();
     timer.run();
-    if (Time.hour() == 3 && Time.day() != timeUpdateDay) runOnceADay();  // update time and daylight savings
+    //if (Time.hour() == 3 && Time.day() != timeUpdateDay) runOnceADay();  // update time and daylight savings
     bool curVUSB = hasVUSB(); // for checking power supply status at USB
     if (curVUSB != hadVUSB) { hadVUSB = curVUSB;  if(curVUSB) {pwLED.on(); powerRegain();}   else{pwLED.off(); powerFail();}   } //this neeeds to stay above startcycles()
     if(Time.minute() != lastminute) minuteloop();
+    if(Time.hour() != lasthour) hourloop();
     /*if (previousDay != Time.day() &&  Time.local() % 86400 >= startTimeInSec && mode == automatic) { //auto mode cycle
         if (curVUSB) {
             if(debugEnable) {terminal.println("startcycleAUTO() called from loop"); terminal.flush();}
@@ -583,10 +593,14 @@ void loop() {
 void minuteloop() {
     lastminute = Time.minute();
     Blynk.virtualWrite(V1, Time.format("%r %m/%d"));
+}
+void hourloop() {
+    signalStrength(); //get current reading
     Blynk.virtualWrite(V2, SIG_STR);
+    if (Time.hour() == 3) runOnceADay();
 }
 void powerRegain() { //this also runs 1 time on reboot -- need some version of turnOff relays that where running when powerFail()
-    Blynk.logEvent("power", "ON");
+    Blynk.logEvent("info", "Main power restored");
     if(cycleAUTOtimer != 99) {Blynk.notify("Power Restored Auto Cycle canceled"); if(debugEnable) {terminal.println("power restored autocycle canceled"); terminal.flush();} }
     else if (cycleADVANtimer != 99) {Blynk.notify("Power Restored Advanced Cycle canceled"); if(debugEnable) {terminal.println("power restored advancycle canceled"); terminal.flush();} }
     else {Blynk.notify("Power Restored"); if(debugEnable) {terminal.println("power restored nothing canceled"); terminal.flush();}}
@@ -608,9 +622,9 @@ void powerRegain() { //this also runs 1 time on reboot -- need some version of t
     }
 }
 void powerFail() { //what should happen when VUSB goes dead
-    Blynk.logEvent("power", "OFF");
+    Blynk.logEvent("power_failure", "Main power failure - Running on battery");
     if (debugEnable) {terminal.println("powerFail()"); terminal.flush();}
-    Blynk.notify("Power Outage!");
+    //Blynk.notify("Power Outage!");
     for (int i = 0; i < numZones; i++) {
         turnOffRelay(i+1); delay (50);
         if(zoneStatus[i]){//if selected zone is on
@@ -619,7 +633,7 @@ void powerFail() { //what should happen when VUSB goes dead
         }
     }
 }
-void setMode(MODE m) {
+void setMode(MODE m) { 
   switch (m) {
     case off:
         for (int i = 0; i < numZones; i++) {
@@ -631,15 +645,18 @@ void setMode(MODE m) {
         }
         terminal.println("setMode() = Off");
         terminal.flush();
+        particleVarMode = "OFF";
         break;
       
     case manual:
         terminal.println("setMode() = manual");
         terminal.flush();
+        particleVarMode = "Manual";
         break;
     case automatic:
         terminal.println("setMode() = automatic");
         terminal.flush();
+        particleVarMode = "Auto";
         break;
     case advanced:
         timer.deleteTimer(cycleAUTOtimer); //trash all future loops if mode is changed //count = 1???? think leave this out for now in case wanna restart latter < put in loop()
@@ -652,6 +669,7 @@ void setMode(MODE m) {
        }
         terminal.println("setMode() = advanced");
         terminal.flush();
+        particleVarMode = "unUsed";
     default: 
       break;
   }
@@ -697,6 +715,9 @@ int refreshTable(String command) {
 void turnOnRelay(int relay) {
     relayONcommand(relay);
     if(masterValve) { relayONcommand(numZones+1); masterValveState = 1; }
+    char msg[20];
+    sprintf_P(msg, PSTR("Zone %d ON"), relay);
+    Blynk.logEvent("zone", msg);
 }
 void relayONcommand(int relay) {   
     if(debugEnable) Particle.publish("turnOnRelay()", String(relay));
@@ -706,10 +727,14 @@ void relayONcommand(int relay) {
     else if(debugEnable) Particle.publish("error/turnOnRelay()", String(relay));
 }
 void turnOffRelay(int relay) {
+    if(debugEnable) Particle.publish("turnOffRelay()", String(relay));
     if(masterValve) relayOFFcommand(numZones+1); 
     if(masterValveState) delay(500); //if master valve was on, wait a bit before shutting off zone valve
     masterValveState = 0;
     relayOFFcommand(relay);
+    char msg[20];
+    sprintf_P(msg, PSTR("Zone %d OFF"), relay);
+    Blynk.logEvent("zone", msg);
 }    
 void relayOFFcommand(int relay) {   
     if(relay >= 1 && relay <= 8) channel_mode(BOARD_1, relay, 0);
@@ -770,4 +795,3 @@ void setZone() {
 	}
 	terminal.println(previousSunday); terminal.flush();
 }
-
