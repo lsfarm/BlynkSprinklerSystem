@@ -585,8 +585,8 @@ void loop() {
     timer.run();
     //if (Time.hour() == 3 && Time.day() != timeUpdateDay) runOnceADay();  // update time and daylight savings
     bool curVUSB = hasVUSB(); // for checking power supply status at USB
-    if (curVUSB != hadVUSB) { hadVUSB = curVUSB;  if(curVUSB) {pwLED.on(); powerRegain();}   else{pwLED.off(); powerFail();}   } //this neeeds to stay above startcycles()
-    if(Time.minute() != lastminute) { minuteloop(); weekdayloop(); }
+    if (curVUSB != hadVUSB) { hadVUSB = curVUSB;  if(curVUSB) {pwLED.on(); /*powerRegain();*/}   else{pwLED.off(); powerFail();}   } //this neeeds to stay above startcycles()
+    if(Time.minute() != lastminute) { minuteloop(); }
     if(Time.hour() != lasthour) hourloop();
     /*if (previousDay != Time.day() &&  Time.local() % 86400 >= startTimeInSec && mode == automatic) { //auto mode cycle
         if (curVUSB) {
@@ -618,10 +618,19 @@ void loop() {
 
 /* Program Functions ************************************************************************************************************/
 void startcycleAUTO(int zone, int programIndex) {
-    turnOnRelay(zone, 1);
-    runningCycleTracker[zone-1] [0] = Time.local() % 86400; //store time right now as secounds into day
-    runningCycleTracker[zone-1] [0] = runningCycleTracker[zone-1] [0] + adjustedZoneTime[zone] [programIndex]; //add amount of time to run for
-    runningCycleTracker[zone-1] [1] = programIndex;
+    if(adjustedZoneTime[zone] [programIndex] != 0) {
+        turnOnRelay(zone, 1);
+        runningCycleTracker[zone-1] [0] = Time.local() % 86400; //store time right now as secounds into day
+        runningCycleTracker[zone-1] [0] = runningCycleTracker[zone-1] [0] + adjustedZoneTime[zone] [programIndex]; //add amount of time to run for
+        runningCycleTracker[zone-1] [1] = programIndex;
+        terminal.print(Time.format("%r-%d ")); terminal.print("startCycleAUTO() zone: "); terminal.println(zone); 
+        terminal.print(runningCycleTracker[zone-1] [0]); terminal.println(runningCycleTracker[zone-1] [1]); terminal.flush();
+    }
+    else if(zone < numZones) { //if zone has 0 sec in adjustedZoneTime skip to next Zone
+        delay(1000);
+        terminal.print(Time.format("%r-%d ")); terminal.print("startCycleAUTO() esle if zone: "); terminal.println(zone+1); terminal.flush();
+        startcycleAUTO(zone+1, programIndex); 
+    }
     /*if (cycleAUTOtimer1 == 99 || cycleAUTOtimer2 == 99) {
         if(adjustedZoneTime[zone] [programIndex] != 0) {
             turnOnRelay(zone, 1);
@@ -645,26 +654,30 @@ void startcycleAUTO(int zone, int programIndex) {
 }
 void stopcycleAUTO(int zone, int programIndex) {
     turnOffRelay(zone, 1);
+    terminal.print(Time.format("%r-%d ")); terminal.print("stopCycleAUTO() zone: "); terminal.println(zone); terminal.flush();
 }
 void weekdayloop() {
     for(byte i=0; i<numPrograms; i++) {
         if(lastRunDay[i] != Time.day() && weekDay[Time.weekday()-1] [i] && Time.local() % 86400 >= autoZoneTime[0] [i] && mode == automatic) {
             lastRunDay[i] = Time.day(); //for blocking out programs to run more than once a day
-            terminal.print("landedWeekDayloop for program ; "); terminal.println(i); terminal.flush();
-            //startcycleAUTO(1, i);// if has Vusb??
+            terminal.print(Time.format("%r-%d ")); terminal.print("WeekDayloop() pro: "); terminal.println(i); terminal.flush();
+            startcycleAUTO(1, i);// if has Vusb??
         }
     }
 }
 void minuteloop() {
     lastminute = Time.minute();
     Blynk.virtualWrite(V1, Time.format("%r %m/%d"));
-    /*for(byte i=0; i<numZones; i++) {
+    weekdayloop();
+    for(byte i=0; i<numZones; i++) {
         if(Time.local() % 86400 >= runningCycleTracker[i] [0] && mode == automatic) {
+            terminal.print(Time.format("%r-%d ")); terminal.print("minuteloop() stop zone: "); terminal.println(i+1); terminal.flush();
             stopcycleAUTO(i+1, runningCycleTracker[i] [1]);
+            runningCycleTracker[i+1] [1] = runningCycleTracker[i] [1]; //move programIdex up to next zone
             runningCycleTracker[i] [0] = notUsed; runningCycleTracker[i] [1] = notUsed;
-            startcycleAUTO(i+1, runningCycleTracker[i] [1]);
+            startcycleAUTO(i+2, runningCycleTracker[i+1] [1]);
         }
-    }*/
+    }
 }
 void hourloop() {
     lasthour = Time.hour();
@@ -788,10 +801,10 @@ int refreshTable(String command) {
 void setMode(MODE m) { 
   switch (m) {
     case off:
-        for (int i = 0; i < numZones; i++) {
+        for (int i = 1; i < numZones+1; i++) {
             if(zoneStatus[i]){//if selected zone is on
-                turnOffRelay(i+1, 1);
-                Blynk.virtualWrite(V51+i, LOW);
+                turnOffRelay(i, 1);
+                Blynk.virtualWrite(V50+i, LOW);
                 //updateBlynkTable(i, 0);
             }
         }
@@ -812,13 +825,13 @@ void setMode(MODE m) {
         break;
     case advanced:
         //timer.deleteTimer(cycleAUTOtimer); //trash all future loops if mode is changed //count = 1???? think leave this out for now in case wanna restart latter < put in loop()
-        for (int i = 0; i < numZones; i++) {
+        /*for (int i = 0; i < numZones; i++) {
             if(zoneStatus[i]){
                 turnOffRelay(i+1, 1);
                 Blynk.virtualWrite(V51+i, LOW);
                 //updateBlynkTable(i, 0);
             }
-       }
+       }*/
         terminal.println("setMode() = advanced");
         terminal.flush();
         particleVarMode = "unUsed";
@@ -871,9 +884,3 @@ int signalStrength() {
     #endif
     return SIG_STR; //omitting this results in SOS
 }
-
-
-
-
-
-
