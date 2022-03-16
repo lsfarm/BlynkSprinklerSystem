@@ -329,7 +329,9 @@ BLYNK_WRITE(V19) {
 } //program menu name change tool
 BLYNK_WRITE(V20) { //program selection menu
     activeProgram = param.asInt();
-    Blynk.virtualWrite(V28, autoZoneTime[0] [activeProgram]); //needs formated zone start time
+    Time.zone(0);
+    Blynk.virtualWrite(V28, Time.format(autoZoneTime[0] [activeProgram], "%r")); //needs formated
+    Time.zone(timeOffset);
     terminal.println(activeProgram); //to be deleted
     for(byte i = 0; i < 7; i++) {
         Blynk.virtualWrite(V30+i, weekDay[i] [activeProgram]); delay(50);
@@ -377,11 +379,11 @@ BLYNK_WRITE(V21) { //program control > off weekday cyclical   add odd even?
   }
 }
 BLYNK_WRITE(V23) {  //program start time
-    //startTimeInSec = param[0].asLong();
-    //terminal.println(startTimeInSec); terminal.flush();
     autoZoneTime[0] [activeProgram] = param[0].asLong();
-    Blynk.virtualWrite(V28, autoZoneTime[0] [activeProgram]); //needs formated
-    terminal.println(autoZoneTime[0] [activeProgram]); terminal.flush();
+    Time.zone(0);
+    Blynk.virtualWrite(V28, Time.format(autoZoneTime[0] [activeProgram], "%r")); //needs formated
+    Time.zone(timeOffset);
+    terminal.print("ProgramStartTime"); terminal.println(autoZoneTime[0] [activeProgram]); terminal.flush();
     //finishTimeCal();???
 }
 BLYNK_WRITE(V25) { //seasonal adjustment slider
@@ -403,7 +405,7 @@ BLYNK_WRITE(V27) {
     if(ref) { Blynk.virtualWrite(V25, 100); Blynk.virtualWrite(V26, 100); Blynk.syncVirtual(V25); }
 }
 
-BLYNK_WRITE(V30) { //swith to sunday to lien up with time.weekday
+BLYNK_WRITE(V30) { //0 = sunday 7 = saturday swith to sunday to lien up with time.weekday
     weekDay[0] [activeProgram] = param.asInt();
     //terminal.print("Monday Switch to: "); terminal.println(weekday[0] [activeProgram]); terminal.flush();
 }
@@ -428,20 +430,20 @@ BLYNK_WRITE(V75) {
     if (debugEnable) { terminal.print("zone1RunTime: "); terminal.println(autoZoneTime[1] [activeProgram]); terminal.flush(); }
 }
 BLYNK_WRITE(V76) { autoZoneTime[2] [activeProgram] = param[0].asLong(); updateActual(2); autoZoneTime[2] [activeProgram] = autoZoneTime[2] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone2RunTime: "); terminal.println(autoZoneTime[2] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V77) { autoZoneTime[3] [activeProgram] = param[0].asLong(); updateActual(3); autoZoneTime[3] [activeProgram] = autoZoneTime[3] [activeProgram] * 60;  autoZoneTime[3] [activeProgram] = autoZoneTime[3] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone3RunTime: "); terminal.println(autoZoneTime[3] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V78) { autoZoneTime[4] [activeProgram] = param[0].asLong(); updateActual(4); autoZoneTime[4] [activeProgram] = autoZoneTime[4] [activeProgram] * 60;  autoZoneTime[4] [activeProgram] = autoZoneTime[4] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone4RunTime: "); terminal.println(autoZoneTime[4] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V79) { autoZoneTime[5] [activeProgram] = param[0].asLong(); updateActual(5); autoZoneTime[5] [activeProgram] = autoZoneTime[5] [activeProgram] * 60;  autoZoneTime[5] [activeProgram] = autoZoneTime[5] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone5RunTime: "); terminal.println(autoZoneTime[5] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V80) { autoZoneTime[6] [activeProgram] = param[0].asLong(); updateActual(6); autoZoneTime[6] [activeProgram] = autoZoneTime[6] [activeProgram] * 60;  autoZoneTime[6] [activeProgram] = autoZoneTime[6] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone6RunTime: "); terminal.println(autoZoneTime[6] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V81) { autoZoneTime[7] [activeProgram] = param[0].asLong(); updateActual(7); autoZoneTime[7] [activeProgram] = autoZoneTime[7] [activeProgram] * 60;  autoZoneTime[7] [activeProgram] = autoZoneTime[7] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone7RunTime: "); terminal.println(autoZoneTime[7] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V82) { autoZoneTime[8] [activeProgram] = param[0].asLong(); updateActual(8); autoZoneTime[8] [activeProgram] = autoZoneTime[8] [activeProgram] * 60;  autoZoneTime[8] [activeProgram] = autoZoneTime[8] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone8RunTime: "); terminal.println(autoZoneTime[8] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V83) { autoZoneTime[9] [activeProgram] = param[0].asLong(); updateActual(9); autoZoneTime[9] [activeProgram] = autoZoneTime[9] [activeProgram] * 60;  autoZoneTime[9] [activeProgram] = autoZoneTime[9] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone9RunTime: "); terminal.println(autoZoneTime[9] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V84) { autoZoneTime[10] [activeProgram] = param[0].asLong(); updateActual(10); autoZoneTime[10] [activeProgram] = autoZoneTime[10] [activeProgram] * 60;  autoZoneTime[10] [activeProgram] = autoZoneTime[10] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone10RunTime: "); terminal.println(autoZoneTime[10] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V85) { autoZoneTime[11] [activeProgram] = param[0].asLong(); updateActual(11); autoZoneTime[11] [activeProgram] = autoZoneTime[11] [activeProgram] * 60;  autoZoneTime[11] [activeProgram] = autoZoneTime[11] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone11RunTime: "); terminal.println(autoZoneTime[11] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V86) { autoZoneTime[12] [activeProgram] = param[0].asLong(); updateActual(12); autoZoneTime[12] [activeProgram] = autoZoneTime[12] [activeProgram] * 60;  autoZoneTime[12] [activeProgram] = autoZoneTime[12] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone12RunTime: "); terminal.println(autoZoneTime[12] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V87) { autoZoneTime[13] [activeProgram] = param[0].asLong(); updateActual(13); autoZoneTime[13] [activeProgram] = autoZoneTime[13] [activeProgram] * 60;  autoZoneTime[13] [activeProgram] = autoZoneTime[13] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone13RunTime: "); terminal.println(autoZoneTime[13] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V88) { autoZoneTime[14] [activeProgram] = param[0].asLong(); updateActual(14); autoZoneTime[14] [activeProgram] = autoZoneTime[14] [activeProgram] * 60;  autoZoneTime[14] [activeProgram] = autoZoneTime[14] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone14RunTime: "); terminal.println(autoZoneTime[14] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V89) { autoZoneTime[15] [activeProgram] = param[0].asLong(); updateActual(15); autoZoneTime[15] [activeProgram] = autoZoneTime[15] [activeProgram] * 60;  autoZoneTime[15] [activeProgram] = autoZoneTime[15] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone15RunTime: "); terminal.println(autoZoneTime[15] [activeProgram]); terminal.flush(); } }
-BLYNK_WRITE(V90) { autoZoneTime[16] [activeProgram] = param[0].asLong(); updateActual(16); autoZoneTime[16] [activeProgram] = autoZoneTime[16] [activeProgram] * 60;  autoZoneTime[16] [activeProgram] = autoZoneTime[16] [activeProgram] * 1000; if (debugEnable) { terminal.print("zone16RunTime: "); terminal.println(autoZoneTime[16] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V77) { autoZoneTime[3] [activeProgram] = param[0].asLong(); updateActual(3); autoZoneTime[3] [activeProgram] = autoZoneTime[3] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone3RunTime: "); terminal.println(autoZoneTime[3] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V78) { autoZoneTime[4] [activeProgram] = param[0].asLong(); updateActual(4); autoZoneTime[4] [activeProgram] = autoZoneTime[4] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone4RunTime: "); terminal.println(autoZoneTime[4] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V79) { autoZoneTime[5] [activeProgram] = param[0].asLong(); updateActual(5); autoZoneTime[5] [activeProgram] = autoZoneTime[5] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone5RunTime: "); terminal.println(autoZoneTime[5] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V80) { autoZoneTime[6] [activeProgram] = param[0].asLong(); updateActual(6); autoZoneTime[6] [activeProgram] = autoZoneTime[6] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone6RunTime: "); terminal.println(autoZoneTime[6] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V81) { autoZoneTime[7] [activeProgram] = param[0].asLong(); updateActual(7); autoZoneTime[7] [activeProgram] = autoZoneTime[7] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone7RunTime: "); terminal.println(autoZoneTime[7] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V82) { autoZoneTime[8] [activeProgram] = param[0].asLong(); updateActual(8); autoZoneTime[8] [activeProgram] = autoZoneTime[8] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone8RunTime: "); terminal.println(autoZoneTime[8] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V83) { autoZoneTime[9] [activeProgram] = param[0].asLong(); updateActual(9); autoZoneTime[9] [activeProgram] = autoZoneTime[9] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone9RunTime: "); terminal.println(autoZoneTime[9] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V84) { autoZoneTime[10] [activeProgram] = param[0].asLong(); updateActual(10); autoZoneTime[10] [activeProgram] = autoZoneTime[10] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone10RunTime: "); terminal.println(autoZoneTime[10] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V85) { autoZoneTime[11] [activeProgram] = param[0].asLong(); updateActual(11); autoZoneTime[11] [activeProgram] = autoZoneTime[11] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone11RunTime: "); terminal.println(autoZoneTime[11] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V86) { autoZoneTime[12] [activeProgram] = param[0].asLong(); updateActual(12); autoZoneTime[12] [activeProgram] = autoZoneTime[12] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone12RunTime: "); terminal.println(autoZoneTime[12] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V87) { autoZoneTime[13] [activeProgram] = param[0].asLong(); updateActual(13); autoZoneTime[13] [activeProgram] = autoZoneTime[13] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone13RunTime: "); terminal.println(autoZoneTime[13] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V88) { autoZoneTime[14] [activeProgram] = param[0].asLong(); updateActual(14); autoZoneTime[14] [activeProgram] = autoZoneTime[14] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone14RunTime: "); terminal.println(autoZoneTime[14] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V89) { autoZoneTime[15] [activeProgram] = param[0].asLong(); updateActual(15); autoZoneTime[15] [activeProgram] = autoZoneTime[15] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone15RunTime: "); terminal.println(autoZoneTime[15] [activeProgram]); terminal.flush(); } }
+BLYNK_WRITE(V90) { autoZoneTime[16] [activeProgram] = param[0].asLong(); updateActual(16); autoZoneTime[16] [activeProgram] = autoZoneTime[16] [activeProgram] * 60;  if (debugEnable) { terminal.print("zone16RunTime: "); terminal.println(autoZoneTime[16] [activeProgram]); terminal.flush(); } }
 
 /*
 BLYNK_WRITE(V12) { //master time in
@@ -515,7 +517,7 @@ BLYNK_WRITE(V64) { zoneRunTimeADVAN[13] = param[0].asLong();  zoneRunTimeADVAN[1
 BLYNK_WRITE(V65) { zoneRunTimeADVAN[14] = param[0].asLong();  zoneRunTimeADVAN[14] = zoneRunTimeADVAN[14] * 60;  zoneRunTimeADVAN[14] = zoneRunTimeADVAN[14] * 1000; if (debugEnable) { terminal.print("zone15RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[14]); terminal.flush(); } }
 BLYNK_WRITE(V66) { zoneRunTimeADVAN[15] = param[0].asLong();  zoneRunTimeADVAN[15] = zoneRunTimeADVAN[15] * 60;  zoneRunTimeADVAN[15] = zoneRunTimeADVAN[15] * 1000; if (debugEnable) { terminal.print("zone16RunTimeADVAN: "); terminal.println(zoneRunTimeADVAN[15]); terminal.flush(); } }
 */
-BLYNK_WRITE(V15) {
+BLYNK_WRITE(V15) { //test button
     int ref = param.asInt();
     if (ref) {
         terminal.print("Time: "); terminal.println(Time.local() % 86400);
@@ -527,6 +529,11 @@ BLYNK_WRITE(V15) {
             terminal.print(weekDay[i][2]);
             terminal.print(weekDay[i][3]);
             terminal.println(weekDay[i][4]);
+        }
+        for (int i = 1; i < numZones+1; i++) {
+            terminal.print("zoneStatus"); terminal.print(i); terminal.print(": ");
+            if(zoneStatus[i]){ terminal.println("ON"); }
+            else { terminal.println("OFF"); }
         }
         terminal.flush();
     }
@@ -617,44 +624,26 @@ void loop() {
 } //end loop
 
 /* Program Functions ************************************************************************************************************/
-void startcycleAUTO(int zone, int programIndex) {
-    if(adjustedZoneTime[zone] [programIndex] != 0) {
-        turnOnRelay(zone, 1);
-        runningCycleTracker[zone-1] [0] = Time.local() % 86400; //store time right now as secounds into day
-        runningCycleTracker[zone-1] [0] = runningCycleTracker[zone-1] [0] + adjustedZoneTime[zone] [programIndex]; //add amount of time to run for
-        runningCycleTracker[zone-1] [1] = programIndex;
-        terminal.print(Time.format("%r-%d ")); terminal.print("startCycleAUTO() zone: "); terminal.println(zone); 
-        terminal.print(runningCycleTracker[zone-1] [0]); terminal.println(runningCycleTracker[zone-1] [1]); terminal.flush();
-    }
-    else if(zone < numZones) { //if zone has 0 sec in adjustedZoneTime skip to next Zone
-        delay(1000);
-        terminal.print(Time.format("%r-%d ")); terminal.print("startCycleAUTO() esle if zone: "); terminal.println(zone+1); terminal.flush();
-        startcycleAUTO(zone+1, programIndex); 
-    }
-    /*if (cycleAUTOtimer1 == 99 || cycleAUTOtimer2 == 99) {
-        if(adjustedZoneTime[zone] [programIndex] != 0) {
-            turnOnRelay(zone, 1);
-            if(cycleAUTOtimer1 == 99) {
-                cycleAUTOtimer1 = timer.setTimeout(adjustedZoneTime[zone][programIndex], [] () {
-                    //int timer1zone = test
-                    //startcycleAUTO(zone, programIndex);
-                    //cycleAUTOtimer1 = timerNA;
-                    //turnOffRelay(zone, 1);
-                });
-            }
-            else if(cycleAUTOtimer2 == 99) {
-                cycleAUTOtimer2 = timer.setTimeout(adjustedZoneTime[zone][programIndex], [] () {
-                    //stopcycleAUTO(zone, programIndex);
-                    cycleAUTOtimer2 = timerNA;
-                });
-            }
-            else { /*error 2 progrmas running }
+void minuteloop() {
+    lastminute = Time.minute();
+    Blynk.virtualWrite(V1, Time.format("%r %m/%d"));
+    for(byte i=0; i<numZones; i++) {
+        if(Time.local() % 86400 >= runningCycleTracker[i] [0] && mode == automatic) {
+            terminal.print(Time.format("%r-%d ")); terminal.print("minuteloop() stop zone: "); terminal.println(i+1); terminal.flush();
+            stopcycleAUTO(i+1, runningCycleTracker[i] [1]);
+            runningCycleTracker[i+1] [1] = runningCycleTracker[i] [1]; //move programIdex up to next zone
+            runningCycleTracker[i] [0] = notUsed; runningCycleTracker[i] [1] = notUsed;
+            startcycleAUTO(i+2, runningCycleTracker[i+1] [1]);
         }
-    }*/
+    } //stop running zones before trying to start more stuff
+    weekdayloop();
 }
-void stopcycleAUTO(int zone, int programIndex) {
-    turnOffRelay(zone, 1);
-    terminal.print(Time.format("%r-%d ")); terminal.print("stopCycleAUTO() zone: "); terminal.println(zone); terminal.flush();
+void hourloop() {
+    lasthour = Time.hour();
+    signalStrength(); //get current reading
+    Blynk.virtualWrite(V2, SIG_STR);
+    if (Time.hour() == 3) runOnceADay();
+    terminal.print("Today is: "); terminal.println(Time.weekday()); terminal.flush();
 }
 void weekdayloop() {
     for(byte i=0; i<numPrograms; i++) {
@@ -665,27 +654,30 @@ void weekdayloop() {
         }
     }
 }
-void minuteloop() {
-    lastminute = Time.minute();
-    Blynk.virtualWrite(V1, Time.format("%r %m/%d"));
-    weekdayloop();
-    for(byte i=0; i<numZones; i++) {
-        if(Time.local() % 86400 >= runningCycleTracker[i] [0] && mode == automatic) {
-            terminal.print(Time.format("%r-%d ")); terminal.print("minuteloop() stop zone: "); terminal.println(i+1); terminal.flush();
-            stopcycleAUTO(i+1, runningCycleTracker[i] [1]);
-            runningCycleTracker[i+1] [1] = runningCycleTracker[i] [1]; //move programIdex up to next zone
-            runningCycleTracker[i] [0] = notUsed; runningCycleTracker[i] [1] = notUsed;
-            startcycleAUTO(i+2, runningCycleTracker[i+1] [1]);
-        }
+void startcycleAUTO(int zone, int programIndex) {
+    if(adjustedZoneTime[zone] [programIndex] != 0) {
+        turnOnRelay(zone, 1);
+        Blynk.virtualWrite(V50+zone, 1);
+        runningCycleTracker[zone-1] [0] = Time.local() % 86400; //store time right now as secounds into day
+        runningCycleTracker[zone-1] [0] = runningCycleTracker[zone-1] [0] + adjustedZoneTime[zone] [programIndex]; //add amount of time to run for
+        runningCycleTracker[zone-1] [1] = programIndex;
+        terminal.print(Time.format("%r-%d ")); terminal.print("startCycleAUTO() zone: "); terminal.println(zone); 
+        terminal.print(runningCycleTracker[zone-1] [0]); terminal.println(runningCycleTracker[zone-1] [1]); terminal.flush();
+    }
+    else if(zone < numZones) { //if zone has 0 sec in adjustedZoneTime skip to next Zone
+        delay(500);
+        zone = zone + 1; // advance to next zone
+        terminal.print(Time.format("%r-%d ")); terminal.print("startCycleAUTO() esle if zone: "); terminal.println(zone); terminal.flush();
+        startcycleAUTO(zone, programIndex); 
     }
 }
-void hourloop() {
-    lasthour = Time.hour();
-    signalStrength(); //get current reading
-    Blynk.virtualWrite(V2, SIG_STR);
-    if (Time.hour() == 3) runOnceADay();
-    terminal.print("Today is: "); terminal.println(Time.weekday()); terminal.flush();
+void stopcycleAUTO(int zone, int programIndex) {
+    turnOffRelay(zone, 1);
+    Blynk.virtualWrite(V50+zone, LOW);
+    terminal.print(Time.format("%r-%d ")); terminal.print("stopCycleAUTO() zone: "); terminal.println(zone); terminal.flush();
 }
+
+
 void powerRegain() { //this also runs 1 time on reboot -- need some version of turnOff relays that where running when powerFail()
     Blynk.logEvent("info", "Main power restored");
     if(cycleAUTOtimer1 != 99) {Blynk.notify("Power Restored Auto Cycle canceled"); if(debugEnable) {terminal.println("power restored autocycle canceled"); terminal.flush();} }
