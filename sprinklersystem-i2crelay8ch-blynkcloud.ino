@@ -82,13 +82,12 @@ V127?? limit
 */
 /* User Adjusted *****************************************************************************************************************/
 #define numPrograms  5
-#define LV //location of device
-bool    debugEnable     = 1;
-bool    sendTOblynk     = 1;  //this sends v51-numZones button status to blynk in auto mode
-//const int numZones      = 10; // need const for advanSched[]
-//bool    masterValve    = 0;  //this turns on numZones + 1 relay .. so for 5 zone setup, relay 6 will be Master
+#define Quinns //location of device
+bool    debugEnable     = 0;
+//bool    sendTOblynk     = 1;  //this sends v51-numZones button status to blynk in auto mode < not used in V2
 #ifdef Quinns
-char auth[] = "V9fruidaVkN2qEB_y7M3Wd_oAC6iprCO";
+char auth[] = "i8tshOaOwzL9AX6mydqURDyKTCE7KqJt";
+// old app char auth[] = "V9fruidaVkN2qEB_y7M3Wd_oAC6iprCO";
 const int   numZones    = 16;
 bool        masterValve = 0;
 #endif
@@ -99,7 +98,7 @@ bool        masterValve = 1;
 #endif
 #ifdef LV
 char auth[] = "bkOyF5tAaEvGn3nz7heV3443lK26ugNN";
-const int   numZones    = 8;
+const int   numZones    = 16;
 bool        masterValve = 0;
 
 #endif
@@ -114,6 +113,7 @@ BlynkTimer timer;
 enum  MODE { off = 0, manual = 1, automatic = 2, advanced = 4, unknown = 999 }; //https://www.baldengineer.com/state-machine-with-enum-tutorial.html
 MODE         mode        = unknown;
 void         setMode(MODE m);
+MODE          modeBeforePowerFail = unknown;  
 int lastminute          = 67;       // used in loop() to do minuteloop()
 int lasthour            = 34;       // used in loop() to do hourloop()
 int timerNA = 99;
@@ -136,6 +136,8 @@ unsigned char i2c_buffer_2;   // i2c relay variable buffer for #2 relay board
 unsigned char i2c_buffer_3;   // i2c relay variable buffer for #3 relay board
 bool masterValveState;
 /* Program Variables ************************************************************************************************************/
+//char *programNames[] = {"Lawn Zones", "Flower Beds", "Program 3",  "Program 4", "Program 5" }; 
+String  programNames[] = {"Lawn Zones", "Flower Beds", "Program 3",  "Program 4", "Program 5" }; 
 int     SIG_STR;
 int     SIG_QUA;
 int     delayDay = 0;
@@ -146,14 +148,15 @@ int     thurs;
 int     fri;
 int     sat;
 int     sun;
-int     weekDay[7] [numPrograms];  //[0] = Sunday  [6] = Saturday  Time.weekday() 1 = Sunday 7 = Saturday
+int     weekDay[7] [numPrograms];       //[0] = Sunday  [6] = Saturday  Time.weekday() 1 = Sunday 7 = Saturday
+int     cycleSelected[numPrograms][2];     //0 = off, 1 = everyday ....
 long    autoZoneTime[25] [numPrograms];       //[#ofzones+1] [0] holds zone start time  5 programs
 unsigned long    adjustedZoneTime[25] [numPrograms];   //[#ofzones+1] [0] holds zone Stop  time  5 programs
-long    startTimeInSec; //above will take the place of this
-int     activeProgram; // which program is selected in app (making changes to this program in app
+//long    startTimeInSec; //above will take the place of this
+int     activeProgram = 0; // which program is selected in app (making changes to this program in app
 int     lastRunDay [numPrograms]; //to block out program from running again after it started 
 int     runningCycleTracker[24] [2];
-int     notUsed = 90000; // getter than secounds in a day
+int     notUsed = 90000; // getter than secounds in a day used in runnungCycleTracker
 //long    zoneRunTime;
 //long    zoneRunTimeAsSec;
 //long    startTimeInSecADVAN;
@@ -320,24 +323,31 @@ BLYNK_WRITE(V66) { blynkWriteManual(15, param.asInt()); }
 /////////************* **********/////////
 BLYNK_WRITE(V8) { //slider on home tab to delay watering if it rains
     delayDay = param.asInt();
-    Blynk.virtualWrite(V11, delayDay);
+    delayDay = delayDay + 1; // this gets minus 1 at 1 sec into new day will this make this work?
+    // combined into V8 dat stream Blynk.virtualWrite(V12, delayDay);
 }
 BLYNK_WRITE(V19) {
-    String textIn = param.asStr();
-    terminal.println(textIn); terminal.flush();
-    Blynk.setProperty(V20, "labels", "Pro1", "Pro2");
+    programNames[activeProgram] = param.asStr();
+    terminal.println(programNames[activeProgram]); terminal.flush();
+    Blynk.setProperty(V20, "labels", programNames[0], programNames[1], programNames[2], programNames[3], programNames[4]);
+    Blynk.virtualWrite(V19, "Saved! " + programNames[activeProgram]);
+    timer.setTimeout(5000L, clearName);
 } //program menu name change tool
+void clearName () {
+    Blynk.virtualWrite(V19, "");
+}
 BLYNK_WRITE(V20) { //program selection menu
     activeProgram = param.asInt();
     Time.zone(0);
     Blynk.virtualWrite(V28, Time.format(autoZoneTime[0] [activeProgram], "%r")); //needs formated
     Time.zone(timeOffset);
     terminal.println(activeProgram); //to be deleted
-    for(byte i = 0; i < 7; i++) {
+    for(byte i = 0; i < 7; i++) {  //weekday buttons
         Blynk.virtualWrite(V30+i, weekDay[i] [activeProgram]); delay(50);
         terminal.print(i); terminal.flush(); //to be deleted
     }
-    for(byte i = 0; i < numZones; i++) {
+    Blynk.virtualWrite(V22, cycleSelected[activeProgram] [0]); // load cycle selected
+    for(byte i = 0; i < numZones; i++) { //zone run times
         long runTimeAutoAsMin = autoZoneTime[i+1] [activeProgram] / 60;
         //runTimeAutoAsMin = runTimeAutoAsMin / 60;
         Blynk.virtualWrite(V75+i, runTimeAutoAsMin); //delay(250);
@@ -366,17 +376,42 @@ BLYNK_WRITE(V21) { //program control > off weekday cyclical   add odd even?
   switch (param.asInt())
   {
     case 0: //Off
-      terminal.println("Item off"); terminal.flush();
+        terminal.println("Item off"); terminal.flush();
+        cycleSelected[activeProgram] [0] = 0;
+        Blynk.virtualWrite(V22, 0);
+        for(byte i = 0; i < 7; i++) {
+            weekDay[i] [activeProgram] = 0;
+            Blynk.virtualWrite(V30+i, 0); delay(50);
+            //terminal.print(i); terminal.flush(); //to be deleted
+        }
       break;
     case 1: //Weekday
-      terminal.println("Item weekday"); terminal.flush();
+        terminal.println("Item weekday"); terminal.flush();
+        cycleSelected[activeProgram] [0] = 0;
+        Blynk.virtualWrite(V22, 0);
+        for(byte i = 0; i < 7; i++) {
+            weekDay[i] [activeProgram] = 1;
+            Blynk.virtualWrite(V30+i, 1); delay(50);
+            //terminal.print(i); terminal.flush(); //to be deleted
+        }
       break;
     case 2: //Cyclical
-      terminal.println("Item cyclical"); terminal.flush();
+        terminal.println("Item cyclical"); terminal.flush();
+        cycleSelected[activeProgram] [0] = 1;
+        Blynk.virtualWrite(V22, 1);
+        for(byte i = 0; i < 7; i++) {
+            weekDay[i] [activeProgram] = 0;
+            Blynk.virtualWrite(V30+i, 0); delay(50);
+            //terminal.print(i); terminal.flush(); //to be deleted
+        }
       break;
     default:
       terminal.println("Unknown item selected"); terminal.flush();
   }
+}
+BLYNK_WRITE(V22) { //save selection to array
+    cycleSelected[activeProgram] [0] = param.asInt();
+    terminal.print("BLYNK_WriteV22(): "); terminal.println(cycleSelected[activeProgram] [0]); terminal.flush();
 }
 BLYNK_WRITE(V23) {  //program start time
     autoZoneTime[0] [activeProgram] = param[0].asLong();
@@ -535,16 +570,17 @@ BLYNK_WRITE(V15) { //test button
             if(zoneStatus[i]){ terminal.println("ON"); }
             else { terminal.println("OFF"); }
         }
+        terminal.print("ActiveProgram: "); terminal.println(activeProgram);
         terminal.flush();
     }
 }
 
 void setup() { //wished could delay loop() if zone on time is in the past on restart 1st zone turns on right away, but doesn't get recorded in table until its turned off
      
-    Particle.function("Debug2Blynk", switchdb2b);
+    Particle.function("DebugEnable", switchdb2b);
     Particle.function("RefreshTable", refreshTable); // not used
     Particle.variable("RunDayCounter", runDayCounter);
-    Particle.variable("Debug2Blynk", debugEnable);
+    Particle.variable("DebugEnabled", debugEnable);
     Particle.variable("Mode", particleVarMode);
     
     Wire.begin(); //for I2C relays
@@ -572,9 +608,10 @@ void setup() { //wished could delay loop() if zone on time is in the past on res
 
 void Blynk_init() { //running this in setup causes device to lockup
     setupdelay = timerNA; // Blynk_init() called from setup by this timer
-    Blynk.logEvent("power_failure", "Battery backup power failure - !!Reenter Auto Setup Info!!");
+    Blynk.logEvent("power_failure", "Battery backup failure - !!Reenter Auto Setup Info!!");
     Blynk.virtualWrite(V9, Time.format("%r %m/%d")); //last reboot time
     //Blynk.sync(V25,V26);
+    Blynk.virtualWrite(V20, 0);   //preset menu to item 0
     Blynk.virtualWrite(V25, 100); //presetslider to 100 so it doesn't get off
     Blynk.virtualWrite(V26, 100);
     /* no tabel in new app> for(byte i = 0; i < numZones; i++) {
@@ -592,35 +629,10 @@ void loop() {
     timer.run();
     //if (Time.hour() == 3 && Time.day() != timeUpdateDay) runOnceADay();  // update time and daylight savings
     bool curVUSB = hasVUSB(); // for checking power supply status at USB
-    if (curVUSB != hadVUSB) { hadVUSB = curVUSB;  if(curVUSB) {pwLED.on(); /*powerRegain();*/}   else{pwLED.off(); powerFail();}   } //this neeeds to stay above startcycles()
-    if(Time.minute() != lastminute) { minuteloop(); }
+    if (curVUSB != hadVUSB) { hadVUSB = curVUSB;  if(curVUSB) {pwLED.on(); powerRegain();}   else{pwLED.off(); powerFail();}   } //this neeeds to stay above startcycles()
+    if(Time.minute() != lastminute) minuteloop(); 
     if(Time.hour() != lasthour) hourloop();
-    /*if (previousDay != Time.day() &&  Time.local() % 86400 >= startTimeInSec && mode == automatic) { //auto mode cycle
-        if (curVUSB) {
-            if(debugEnable) {terminal.println("startcycleAUTO() called from loop"); terminal.flush();}
-            previousDay = Time.day();
-            count = 1; // in case mode gets changed
-            startcycleAUTO(); //timer already running check in this function
-        }
-        else{
-            previousDay = Time.day();
-            Blynk.notify("Power Outage Auto Cycle Skipped Today");
-            if(debugEnable) { terminal.println("startcycleAUTO() skipped Power Outage"); terminal.flush();}
-        }
-    }*/
-    /*if (previousDayADVAN != Time.day() &&  Time.local() % 86400 >= startTimeInSecADVAN && mode == advanced && !timer.isEnabled(cycleADVANtimer)) { //advanced mode cycle
-        if(curVUSB) { //we have 120VAC power - run cycle
-            if(debugEnable) { terminal.println("startcycleADVAN() called from loop"); terminal.flush();}
-            previousDayADVAN = Time.day();
-            counterADVAN = 0; // in case mode gets changed
-            startcycleADVAN();
-        }
-        else{
-            previousDayADVAN = Time.day();
-            Blynk.notify("Power Outage Advanced Cycle Skipped Today");
-            if(debugEnable) { terminal.println("startcycleADVAN() skipped Power Outage"); terminal.flush();}
-        }
-    }*/
+    if (Time.hour() == 3 && Time.day() != timeUpdateDay) runOnceADay();  // update time and daylight savings
 } //end loop
 
 /* Program Functions ************************************************************************************************************/
@@ -636,20 +648,53 @@ void minuteloop() {
             startcycleAUTO(i+2, runningCycleTracker[i+1] [1]);
         }
     } //stop running zones before trying to start more stuff
-    weekdayloop();
+    if (delayDay == 0)  {
+        weekdayloop();  //add cyclical adjust down by day
+        cyclicalloop();
+    }
 }
 void hourloop() {
+    //if(debugEnable) Particle.publish("hourloop()", String(Time.format("%r %m/%d")));
     lasthour = Time.hour();
     signalStrength(); //get current reading
     Blynk.virtualWrite(V2, SIG_STR);
     if (Time.hour() == 3) runOnceADay();
-    terminal.print("Today is: "); terminal.println(Time.weekday()); terminal.flush();
+    if (Time.hour() == 0 && delayDay != 0) {
+        int oldDelayDay = delayDay;
+        delayDay = delayDay - 1; 
+        Blynk.virtualWrite(V8, delayDay);
+        if(debugEnable) Particle.publish("hourloop()/delayDay", String::format("%d,%d", oldDelayDay, delayDay));
+    }
+    if (Time.hour() == 0 && delayDay == 0) {
+        for(byte i=0; i<numPrograms; i++) {
+            if(cycleSelected [i] [1] != 0) cycleSelected [i] [1] = cycleSelected [i] [1] - 1;
+        }
+    }
+    //terminal.print("Today is: "); terminal.println(Time.weekday()); terminal.flush();
 }
 void weekdayloop() {
+    long add5min[numPrograms]; //only allow 5 min start window after start time
     for(byte i=0; i<numPrograms; i++) {
-        if(lastRunDay[i] != Time.day() && weekDay[Time.weekday()-1] [i] && Time.local() % 86400 >= autoZoneTime[0] [i] && mode == automatic) {
+        add5min[i] = autoZoneTime[0] [i] + 300;
+        if(lastRunDay[i] != Time.day() && weekDay[Time.weekday()-1] [i] && Time.local() % 86400 >= autoZoneTime[0] [i] && Time.local() % 86400 <= add5min[i] && mode == automatic) {
             lastRunDay[i] = Time.day(); //for blocking out programs to run more than once a day
-            terminal.print(Time.format("%r-%d ")); terminal.print("WeekDayloop() pro: "); terminal.println(i); terminal.flush();
+            //terminal.print(Time.format("%r-%d ")); terminal.print("WeekDayloop() pro: "); terminal.println(i); terminal.flush();
+            //Particle.publish("weekdayloop() pro: ", String(i));
+            Blynk.logEvent("zone", String("WeekDay Program Starting: ") + programNames[i]);
+            startcycleAUTO(1, i);// if has Vusb??
+        }
+    }
+}
+void cyclicalloop() { //V22
+    long add5min[numPrograms]; //only allow 5 min start window after start time
+    for(byte i=0; i<numPrograms; i++) {
+        add5min[i] = autoZoneTime[0] [i] + 300;
+        if(lastRunDay[i] != Time.day() && cycleSelected [i] [1] == 0 && Time.local() % 86400 >= autoZoneTime[0] [i] && Time.local() % 86400 <= add5min[i] && mode == automatic) {
+            lastRunDay[i] = Time.day(); //for blocking out programs to run more than once a day
+            cycleSelected [i] [1] = cycleSelected [i] [0];
+            //terminal.print(Time.format("%r-%d ")); terminal.print("cyclicalloop() pro: "); terminal.println(i); terminal.flush();
+            //Particle.publish("cyclicalloop() pro: ", String(i));
+            Blynk.logEvent("zone", String("Cyclical Program Starting: ") + programNames[i]);
             startcycleAUTO(1, i);// if has Vusb??
         }
     }
@@ -665,7 +710,7 @@ void startcycleAUTO(int zone, int programIndex) {
         terminal.print(runningCycleTracker[zone-1] [0]); terminal.println(runningCycleTracker[zone-1] [1]); terminal.flush();
     }
     else if(zone < numZones) { //if zone has 0 sec in adjustedZoneTime skip to next Zone
-        delay(500);
+        //delay(500);
         zone = zone + 1; // advance to next zone
         terminal.print(Time.format("%r-%d ")); terminal.print("startCycleAUTO() esle if zone: "); terminal.println(zone); terminal.flush();
         startcycleAUTO(zone, programIndex); 
@@ -679,38 +724,14 @@ void stopcycleAUTO(int zone, int programIndex) {
 
 
 void powerRegain() { //this also runs 1 time on reboot -- need some version of turnOff relays that where running when powerFail()
-    Blynk.logEvent("info", "Main power restored");
-    if(cycleAUTOtimer1 != 99) {Blynk.notify("Power Restored Auto Cycle canceled"); if(debugEnable) {terminal.println("power restored autocycle canceled"); terminal.flush();} }
-    //else if (cycleADVANtimer != 99) {Blynk.notify("Power Restored Advanced Cycle canceled"); if(debugEnable) {terminal.println("power restored advancycle canceled"); terminal.flush();} }
-    else {Blynk.notify("Power Restored"); if(debugEnable) {terminal.println("power restored nothing canceled"); terminal.flush();}}
-    timer.deleteTimer(cycleAUTOtimer1);
-    cycleAUTOtimer1 = timerNA;
-    //timer.deleteTimer(cycleADVANtimer);
-    //cycleADVANtimer = timerNA;
-    //is this still needed? R1.setAddress(1, 1, 1); //restart comunication with relay board
-    for (int i = 0; i < numZones; i++) {
-        turnOffRelay(i+1, 0); delay (50);
-        if(zoneStatus[i]){//if selected zone is on
-            Blynk.virtualWrite(V51+i, LOW);
-            //updateBlynkTable(i, 0);
-        }
-    }
-    if (debugEnable) {
-        //if(R1.initialized){ terminal.println("Power Restored - Relay is ready"); terminal.flush(); }
-        //else{ terminal.println("Relay not ready"); terminal.flush(); }
-    }
+    Blynk.logEvent("info", "Main power restored Mode: " + particleVarMode); //add in mode switched to
+    setMode(modeBeforePowerFail);
 }
 void powerFail() { //what should happen when VUSB goes dead
     Blynk.logEvent("power_failure", "Main power failure - Running on battery");
     if (debugEnable) {terminal.println("powerFail()"); terminal.flush();}
-    //Blynk.notify("Power Outage!");
-    for (int i = 0; i < numZones; i++) {
-        turnOffRelay(i+1, 0); delay (50);
-        if(zoneStatus[i]){//if selected zone is on
-            Blynk.virtualWrite(V51+i, LOW);
-            //updateBlynkTable(i, 0);
-        }
-    }
+    modeBeforePowerFail = mode;
+    setMode(off); //try this instead of code below
 }
 /* Relay Functions **************************************************************************************************************/
 void turnOnRelay(int relay, bool zoneEvent) {
@@ -719,7 +740,7 @@ void turnOnRelay(int relay, bool zoneEvent) {
     zoneStatus[relay] = 1;
     char msg[20];
     sprintf_P(msg, PSTR("Zone %d ON"), relay);
-    //Blynk.logEvent("zone", msg);
+    Blynk.logEvent("zone", msg);
 }
 void relayONcommand(int relay) {   
     if(debugEnable) Particle.publish("turnOnRelay()", String(relay));
@@ -738,7 +759,7 @@ void turnOffRelay(int relay, bool zoneEvent) {
     zoneStatus[relay] = 0;
     char msg[20];
     sprintf_P(msg, PSTR("Zone %d OFF"), relay);
-    //Blynk.logEvent("zone", msg);
+    Blynk.logEvent("zone", msg);
 }    
 void relayOFFcommand(int relay) {   
     if(relay >= 1 && relay <= 8) channel_mode(BOARD_1, relay, 0);
@@ -849,9 +870,11 @@ void setZone() {
 	int previousSunday = day - weekday + 1;
 
 	if (month < 3 || month > 11) {
-		Time.zone(-6);
+	    timeOffset = -6;
+		Time.zone(timeOffset);
 	}else if (month > 3 && month < 11) {
-		Time.zone(-5);
+		timeOffset = -5;
+		Time.zone(timeOffset);
 	}else if (month == 3) {
 		//int offset = (previousSunday >= 8)? -5 : -6;
 		timeOffset = (previousSunday >= 8)? -5 : -6;
@@ -875,4 +898,3 @@ int signalStrength() {
         SIG_QUA = Cellular.RSSI().getQuality();
     #endif
     return SIG_STR; //omitting this results in SOS
-}
